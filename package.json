@@ -1,0 +1,17 @@
+{
+  "name": "agent-harnessly",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.8.0",
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

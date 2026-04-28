@@ -1,0 +1,7 @@
+host: codex
+version: 0.0.0
+enabled: true
+repo_local_paths: .codex/config.toml,.codex/hooks.json,.harness/hosts/codex/hooks/session_start.js,.harness/hosts/codex/hooks/user_prompt_submit.js,.harness/hosts/codex/hooks/stop.js,.harness/hosts/codex/hooks/shared/codex-hook-io.js
+session_start_command: "/opt/homebrew/Cellar/node/25.9.0_2/bin/node" "/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js" host session-start
+user_prompt_submit_command: "/opt/homebrew/Cellar/node/25.9.0_2/bin/node" "/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js" host user-prompt-submit
+completion_gate_command: "/opt/homebrew/Cellar/node/25.9.0_2/bin/node" "/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js" host completion-gate

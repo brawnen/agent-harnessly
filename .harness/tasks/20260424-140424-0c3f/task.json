@@ -1,0 +1,4 @@
+{
+  "taskId": "20260424-140424-0c3f",
+  "goal": "在 trial 文档中新增一小节，说明如何通过 .harness/events.jsonl 验证 harness-planner / harness-evaluator 是否真实启动，并注明手工 agent-event smoke 不等于宿主真实启动。"
+}

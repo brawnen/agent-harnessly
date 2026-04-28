@@ -1,0 +1,13 @@
+goal: 还有两个建议：
+planner 能不能利用宿主的 plan 模式，同时可以指定使用的模型；
+
+
+template_name: general-task
+risk_level: low
+scope_include: 相关实现路径
+scope_exclude: 无关模块,用户级全局配置
+acceptance_criteria: 目标“还有两个建议：
+planner 能不能利用宿主的 plan 模式，同时可以指定使用的模型；
+
+”已被实现或修复,变更范围与目标一致,输出结果可供后续 verify 使用
+out_of_scope: 重构整仓,新增未请求依赖

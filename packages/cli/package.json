@@ -1,0 +1,25 @@
+{
+  "name": "@harnessly/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "harnessly": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@harnessly/core": "workspace:*",
+    "@harnessly/host-claude-code": "workspace:*",
+    "@harnessly/host-codex": "workspace:*",
+    "@harnessly/host-shared": "workspace:*",
+    "@harnessly/shared": "workspace:*"
+  }
+}

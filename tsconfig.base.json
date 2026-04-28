@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@harnessly/shared": ["packages/shared/src/index.ts"],
+      "@harnessly/core": ["packages/core/src/index.ts"],
+      "@harnessly/cli": ["packages/cli/src/index.ts"],
+      "@harnessly/host-shared": ["packages/hosts/shared/src/index.ts"],
+      "@harnessly/host-claude-code": ["packages/hosts/claude-code/src/index.ts"],
+      "@harnessly/host-codex": ["packages/hosts/codex/src/index.ts"]
+    },
+    "lib": ["ES2022"],
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true
+  }
+}

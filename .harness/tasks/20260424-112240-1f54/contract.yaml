@@ -1,0 +1,11 @@
+goal: 把 Codex 和 Claude Code 的 sub-agent 生成情况补进试用/设计文档
+然后再决定是否让宿主主路径优先走 Planner/Evaluator sub-agent，而不是只停留在“定义文件已生成”阶段。
+
+template_name: general-task
+risk_level: low
+scope_include: 相关实现路径
+scope_exclude: 无关模块,用户级全局配置
+acceptance_criteria: 目标“把 Codex 和 Claude Code 的 sub-agent 生成情况补进试用/设计文档
+然后再决定是否让宿主主路径优先走 Planner/Evaluator sub-agent，而不是只停留在“定义文件已生成”阶段。
+”已被实现或修复,变更范围与目标一致,输出结果可供后续 verify 使用
+out_of_scope: 重构整仓,新增未请求依赖

@@ -6,6 +6,7 @@
       {
         "id": "36d9181a319baa9f",
         "type": "tabs",
+        "dimension": 74.59128065395095,
         "children": [
           {
             "id": "154b22d7d27e242a",
@@ -13,13 +14,38 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/design/v2-review-and-risk-solutions.md",
+                "file": "docs/design/implementation-todolist.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "v2-review-and-risk-solutions"
-            }
+              "title": "implementation-todolist"
+            },
+            "group": "dbdc1e32e9134c53"
+          }
+        ],
+        "stacked": true
+      },
+      {
+        "id": "3ef61c7139c4943d",
+        "type": "tabs",
+        "dimension": 25.408719346049047,
+        "children": [
+          {
+            "id": "916633a5729a0d48",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "docs/design/implementation-todolist.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "implementation-todolist 的大纲"
+            },
+            "group": "dbdc1e32e9134c53"
           }
         ]
       }
@@ -78,7 +104,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 325.5
   },
   "right": {
     "id": "c2a98ac273cef33e",
@@ -94,7 +120,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "docs/design/v2-review-and-risk-solutions.md",
+                "file": "docs/design/implementation-todolist.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +130,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "v2-review-and-risk-solutions 的反向链接列表"
+              "title": "implementation-todolist 的反向链接列表"
             }
           },
           {
@@ -151,18 +177,18 @@
             }
           },
           {
-            "id": "12f99ba48ea76399",
+            "id": "af1cacc6a7ee781c",
             "type": "leaf",
             "state": {
               "type": "outline",
               "state": {
-                "file": "docs/design/v2-review-and-risk-solutions.md",
+                "file": "docs/design/implementation-todolist.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "v2-review-and-risk-solutions 的大纲"
+              "title": "implementation-todolist 的大纲"
             }
           }
         ]
@@ -183,13 +209,24 @@
       "bases:新建数据库": false
     }
   },
-  "active": "154b22d7d27e242a",
+  "active": "79b647850c47e011",
   "lastOpenFiles": [
-    "docs/design/agent-harness-product-design-v2.md",
+    "packages/cli/src/commands/eval.ts",
+    "packages/core/src/workflow.ts",
+    "packages/core/src/scope.ts",
+    "packages/core/src/report.ts",
+    "packages/core/src/gate.ts",
+    "packages/core/src/evidence.ts",
+    "packages/core/src/prompt.ts",
+    "packages/core/src/execute.ts",
+    "packages/cli/src/commands/run.ts",
+    "packages/cli/src/commands/list.ts",
+    "packages/core/src/plan.ts",
     "docs/design/technical-implementation-plan.md",
-    "docs/design/v2-review-and-risk-solutions.md",
-    "docs/design/agent-harness-design_1.docx",
-    "docs/design/agent-harness-design.docx",
-    "docs/design"
+    "docs/design/implementation-todolist.md",
+    "docs/design/agent-harness-product-design-v2.md",
+    "docs/review/host-integration-architecture-review.md",
+    "docs/review/global-rules-skills-repo-harness-asset-inventory.md",
+    "docs/review/v2-review-and-risk-solutions.md"
   ]
 }

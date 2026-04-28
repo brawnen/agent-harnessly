@@ -1,0 +1,4 @@
+{
+  "taskId": "20260424-112240-1f54",
+  "goal": "把 Codex 和 Claude Code 的 sub-agent 生成情况补进试用/设计文档\n然后再决定是否让宿主主路径优先走 Planner/Evaluator sub-agent，而不是只停留在“定义文件已生成”阶段。\n"
+}

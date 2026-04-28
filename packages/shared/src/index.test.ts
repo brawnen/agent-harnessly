@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  parseContract,
+  parseHarnessConfig,
+  parseTaskReport,
+  parseTemplateDraft,
+  serializeContract,
+  serializeHarnessConfig,
+  serializeTaskReport,
+  serializeTemplateDraft,
+  type Contract,
+  type HarnessConfig,
+  type TaskReport,
+  type TemplateDraft,
+} from './index';
+
+describe('shared contract helpers', () => {
+  it('should round-trip contract fields', () => {
+    const contract: Contract = {
+      goal: '修复状态展示',
+      templateName: 'bug-fix',
+      riskLevel: 'medium',
+      scopeInclude: ['packages/cli/src'],
+      scopeExclude: ['dist/**'],
+      acceptanceCriteria: ['file:result.txt', 'contains:result.txt::ok'],
+      outOfScope: ['重构 workflow'],
+    };
+
+    expect(parseContract(serializeContract(contract))).toEqual(contract);
+  });
+
+  it('should round-trip harness config fields', () => {
+    const config: HarnessConfig = {
+      version: 1,
+      projectType: 'node',
+      requiredChecks: ['build', 'test'],
+      defaultHost: 'claude-code',
+      enabledHosts: ['claude-code', 'codex'],
+      installRepoLocalShells: true,
+      sourceOfTruthDir: '.harness/hosts',
+      fallbackCreateTaskWithoutPlanner: true,
+      codexUserPromptSubmitHookEnabled: true,
+      hostSubagents: {
+        planner: {
+          useHostPlanMode: false,
+          models: {
+            'claude-code': 'sonnet',
+            codex: 'gpt-5.4-mini',
+            'gemini-cli': 'gemini-flash',
+          },
+        },
+        evaluator: {
+          models: {
+            'claude-code': 'opus',
+            codex: 'gpt-5.4',
+            'gemini-cli': 'gemini-pro',
+          },
+        },
+      },
+      adapterKind: 'codex',
+      adapterCommand: 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"',
+    };
+
+    expect(parseHarnessConfig(serializeHarnessConfig(config))).toEqual(config);
+  });
+
+  it('should round-trip task report fields', () => {
+    const report: TaskReport = {
+      taskId: 'task-1',
+      goal: '修复状态展示',
+      adapter: {
+        kind: 'custom',
+        command: 'echo ok',
+        exitCode: 0,
+        stdout: 'ok',
+        stderr: '',
+      },
+      evidence: {
+        checks: [
+          {
+            name: 'test',
+            status: 'passed',
+            command: 'pnpm test',
+            detail: 'passed',
+          },
+        ],
+        changedFiles: ['packages/cli/src/commands/status.ts'],
+      },
+      commitGate: {
+        passed: true,
+        failures: [],
+      },
+      commitReady: true,
+      summary: '执行与最小验证通过',
+      generatedAt: '2026-04-20T00:00:00.000Z',
+    };
+
+    expect(parseTaskReport(serializeTaskReport(report))).toEqual(report);
+  });
+
+  it('should round-trip template draft fields', () => {
+    const template: TemplateDraft = {
+      name: 'status-template',
+      description: '修复状态展示',
+      sourceTaskId: 'task-1',
+      appliesTo: ['bug-fix', '状态展示'],
+      templateName: 'bug-fix',
+      riskLevel: 'low',
+      requiredChecks: ['typecheck'],
+      scopeInclude: ['packages/cli/src'],
+      outOfScope: ['workflow'],
+      acceptanceCriteria: ['status 可读'],
+    };
+
+    expect(parseTemplateDraft(serializeTemplateDraft(template))).toEqual(template);
+  });
+
+  it('should reject malformed task report payload', () => {
+    expect(() =>
+      parseTaskReport(
+        JSON.stringify({
+          taskId: 'task-1',
+          goal: '修复状态展示',
+          adapter: {
+            kind: 'custom',
+            command: 'echo ok',
+            exitCode: 0,
+            stdout: 'ok',
+            stderr: '',
+          },
+          evidence: { checks: [], changedFiles: [] },
+          commitGate: { passed: true, failures: [] },
+          commitReady: 'true',
+          summary: '执行与最小验证通过',
+          generatedAt: '2026-04-20T00:00:00.000Z',
+        }),
+      ),
+    ).toThrow('task report 校验失败');
+  });
+});

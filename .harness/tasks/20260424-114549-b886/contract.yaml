@@ -1,0 +1,9 @@
+goal: 同意，修改文档并实现
+
+template_name: feature-simple
+risk_level: low
+scope_include: 相关功能模块路径
+scope_exclude: 无关模块,用户级全局配置
+acceptance_criteria: 目标“同意，修改文档并实现
+”已被实现或修复,变更范围与目标一致,输出结果可供后续 verify 使用
+out_of_scope: 跨模块平台化重构,新增未请求依赖

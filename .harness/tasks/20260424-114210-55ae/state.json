@@ -1,0 +1,12 @@
+{
+  "taskId": "20260424-114210-55ae",
+  "status": "ready",
+  "currentStage": "plan",
+  "createdAt": "2026-04-24T11:42:10.048Z",
+  "updatedAt": "2026-04-24T11:42:10.053Z",
+  "completedStages": [
+    "contract",
+    "plan"
+  ],
+  "retryCount": 0
+}
