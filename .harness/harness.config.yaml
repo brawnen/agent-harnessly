@@ -1,8 +1,8 @@
 version: 1
 project_type: node
 required_checks: build,lint,typecheck,test
-default_host: codex
-enabled_hosts: codex,claude-code
+default_host: claude-code
+enabled_hosts: claude-code,codex
 install_repo_local_shells: true
 source_of_truth_dir: .harness/hosts
 fallback_create_task_without_planner: false
@@ -12,7 +12,7 @@ planner_model_claude_code: haiku
 planner_model_codex: gpt-5.4-mini
 planner_model_gemini_cli: gemini-flash
 evaluator_model_claude_code: sonnet
-evaluator_model_codex: gpt-5.5
+evaluator_model_codex: gpt-5.4
 evaluator_model_gemini_cli: gemini-pro
-adapter_kind: codex
-adapter_command: codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"
+adapter_kind: claude-code
+adapter_command: 

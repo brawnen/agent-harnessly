@@ -354,11 +354,12 @@ async function readActiveTaskId(workDir) {
 // src/commands/init.ts
 async function runInit(flags) {
   const workDir = process.cwd();
-  const requestedHost = typeof flags.host === "string" ? flags.host : "claude-code";
+  const rawHost = typeof flags.host === "string" ? flags.host : "claude-code";
+  const hosts = rawHost.split(",").map((h) => h.trim()).filter(Boolean);
   const force = flags.force === true;
   const projectType = await detectProjectType(workDir);
   const paths = await ensureHarnessDirectories(workDir);
-  const config = createDefaultHarnessConfig(projectType, requestedHost);
+  const config = createDefaultHarnessConfig(projectType, hosts);
   const configStatus = await writeHarnessConfig(workDir, config, force);
   const globalRulesStatus = await writeFileIfChanged(
     paths.globalRulesFile,
@@ -367,8 +368,10 @@ async function runInit(flags) {
   );
   const agentResults = await writeDefaultAgentManifests(workDir, force);
   const agentSummary = agentResults.map((r) => `${r.role}=${r.manifestStatus}/${r.promptStatus}`).join(", ");
-  await ensureHostManifest(workDir, config.defaultHost);
-  const installedPaths = config.installRepoLocalShells ? await installHostShells(workDir, config.defaultHost) : [];
+  for (const host of hosts) {
+    await ensureHostManifest(workDir, host);
+  }
+  const installedPaths = config.installRepoLocalShells ? await installHostShells(workDir) : [];
   await writeFile2(paths.activeTaskFile, "", "utf8");
   printLines([
     "Harnessly \u521D\u59CB\u5316\u5B8C\u6210",
@@ -376,7 +379,8 @@ async function runInit(flags) {
     `- config: ${configStatus}`,
     `- global_rules: ${globalRulesStatus}`,
     `- agents: ${agentSummary}`,
-    `- host: ${config.defaultHost}`,
+    `- hosts: ${hosts.join(", ")}`,
+    `- default_host: ${config.defaultHost}`,
     `- installed_shells: ${installedPaths.length > 0 ? installedPaths.join(", ") : "none"}`
   ]);
 }

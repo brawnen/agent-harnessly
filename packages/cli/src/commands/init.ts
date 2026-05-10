@@ -16,13 +16,17 @@ import { printLines } from '../utils/output';
 
 export async function runInit(flags: Record<string, string | boolean>): Promise<void> {
   const workDir = process.cwd();
-  const requestedHost =
-    (typeof flags.host === 'string' ? flags.host : 'claude-code') as HostName;
+  const rawHost =
+    (typeof flags.host === 'string' ? flags.host : 'claude-code');
+  const hosts = rawHost
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean) as HostName[];
   const force = flags.force === true;
 
   const projectType = await detectProjectType(workDir);
   const paths = await ensureHarnessDirectories(workDir);
-  const config = createDefaultHarnessConfig(projectType, requestedHost);
+  const config = createDefaultHarnessConfig(projectType, hosts);
 
   const configStatus = await writeHarnessConfig(workDir, config, force);
   const globalRulesStatus = await writeFileIfChanged(
@@ -37,9 +41,11 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     .map((r) => `${r.role}=${r.manifestStatus}/${r.promptStatus}`)
     .join(', ');
 
-  await ensureHostManifest(workDir, config.defaultHost);
+  for (const host of hosts) {
+    await ensureHostManifest(workDir, host);
+  }
   const installedPaths = config.installRepoLocalShells
-    ? await installHostShells(workDir, config.defaultHost)
+    ? await installHostShells(workDir)
     : [];
 
   await writeFile(paths.activeTaskFile, '', 'utf8');
@@ -50,7 +56,8 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     `- config: ${configStatus}`,
     `- global_rules: ${globalRulesStatus}`,
     `- agents: ${agentSummary}`,
-    `- host: ${config.defaultHost}`,
+    `- hosts: ${hosts.join(', ')}`,
+    `- default_host: ${config.defaultHost}`,
     `- installed_shells: ${installedPaths.length > 0 ? installedPaths.join(', ') : 'none'}`,
   ]);
 }

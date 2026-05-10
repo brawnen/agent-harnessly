@@ -4,7 +4,7 @@ import { createDefaultHarnessConfig } from './config';
 
 describe('default harness config', () => {
   it('should use codex adapter defaults when default host is codex', () => {
-    const config = createDefaultHarnessConfig('unknown', 'codex');
+    const config = createDefaultHarnessConfig('unknown', ['codex']);
 
     expect(config.adapterKind).toBe('codex');
     expect(config.adapterCommand).toContain('codex exec --full-auto');

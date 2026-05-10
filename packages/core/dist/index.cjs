@@ -164,13 +164,14 @@ function getDefaultAdapterCommand(defaultHost) {
       return "";
   }
 }
-function createDefaultHarnessConfig(projectType, defaultHost = "claude-code") {
+function createDefaultHarnessConfig(projectType, hosts = ["claude-code"]) {
+  const defaultHost = hosts[0] ?? "claude-code";
   return {
     version: Number(import_shared.HARNESSLY_VERSION.split(".")[0] ?? "0") + 1,
     projectType,
     requiredChecks: getDefaultRequiredChecks(projectType),
     defaultHost,
-    enabledHosts: [defaultHost],
+    enabledHosts: hosts,
     installRepoLocalShells: true,
     sourceOfTruthDir: ".harness/hosts",
     fallbackCreateTaskWithoutPlanner: false,

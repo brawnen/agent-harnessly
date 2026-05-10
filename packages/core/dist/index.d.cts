@@ -119,7 +119,7 @@ declare function getArchiveTargetPaths(workDir: string, taskId: string, topic?: 
  */
 declare function archiveTaskArtifacts(workDir: string, taskId: string, kind: ArchiveKind, options?: ArchiveOptions): Promise<ArchiveResult>;
 
-declare function createDefaultHarnessConfig(projectType: ProjectType, defaultHost?: HostName): HarnessConfig;
+declare function createDefaultHarnessConfig(projectType: ProjectType, hosts?: HostName[]): HarnessConfig;
 declare function serializeHarnessConfig(config: HarnessConfig): string;
 declare function parseHarnessConfig(text: string): HarnessConfig;
 
