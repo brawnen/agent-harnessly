@@ -24,15 +24,21 @@ __export(index_exports, {
   SHARED_PACKAGE_NAME: () => SHARED_PACKAGE_NAME,
   adapterKindSchema: () => adapterKindSchema,
   adapterOutputSchema: () => adapterOutputSchema,
+  agentManifestSchema: () => agentManifestSchema,
+  agentRoleSchema: () => agentRoleSchema,
   checkStatusSchema: () => checkStatusSchema,
+  commitDecisionSchema: () => commitDecisionSchema,
   commitGateResultSchema: () => commitGateResultSchema,
   contractSchema: () => contractSchema,
+  evidenceBaselineSchema: () => evidenceBaselineSchema,
   evidenceCheckResultSchema: () => evidenceCheckResultSchema,
   evidenceResultSchema: () => evidenceResultSchema,
+  feedbackEntrySchema: () => feedbackEntrySchema,
   harnessConfigSchema: () => harnessConfigSchema,
   hostNameSchema: () => hostNameSchema,
   hostSubagentConfigSchema: () => hostSubagentConfigSchema,
   packageInfo: () => packageInfo,
+  parseAgentManifestYaml: () => parseAgentManifestYaml,
   parseBoolean: () => parseBoolean,
   parseContract: () => parseContract,
   parseFlatYaml: () => parseFlatYaml,
@@ -43,11 +49,13 @@ __export(index_exports, {
   projectTypeSchema: () => projectTypeSchema,
   requiredCheckSchema: () => requiredCheckSchema,
   riskLevelSchema: () => riskLevelSchema,
+  serializeAgentManifestYaml: () => serializeAgentManifestYaml,
   serializeContract: () => serializeContract,
   serializeFlatYaml: () => serializeFlatYaml,
   serializeHarnessConfig: () => serializeHarnessConfig,
   serializeTaskReport: () => serializeTaskReport,
   serializeTemplateDraft: () => serializeTemplateDraft,
+  stageMarkerSchema: () => stageMarkerSchema,
   taskReportSchema: () => taskReportSchema,
   taskStatusSchema: () => taskStatusSchema,
   templateDraftSchema: () => templateDraftSchema,
@@ -55,7 +63,8 @@ __export(index_exports, {
   validateContract: () => validateContract,
   validateHarnessConfig: () => validateHarnessConfig,
   validateTaskReport: () => validateTaskReport,
-  validateTemplateDraft: () => validateTemplateDraft
+  validateTemplateDraft: () => validateTemplateDraft,
+  workflowStageSchema: () => workflowStageSchema
 });
 module.exports = __toCommonJS(index_exports);
 var import_zod = require("zod");
@@ -98,6 +107,20 @@ var taskStatusSchema = import_zod.z.enum([
   "passed",
   "failed"
 ]);
+var workflowStageSchema = import_zod.z.enum([
+  "spec",
+  "design",
+  "execute",
+  "review",
+  "test",
+  "commit_gate"
+]);
+var stageMarkerSchema = import_zod.z.union([
+  workflowStageSchema,
+  import_zod.z.literal("created"),
+  import_zod.z.literal("failed"),
+  import_zod.z.literal("retry")
+]);
 var checkStatusSchema = import_zod.z.enum(["passed", "failed", "skipped"]);
 var harnessConfigSchema = import_zod.z.object({
   version: import_zod.z.number().int().nonnegative(),
@@ -139,9 +162,17 @@ var evidenceResultSchema = import_zod.z.object({
   checks: import_zod.z.array(evidenceCheckResultSchema),
   changedFiles: import_zod.z.array(import_zod.z.string())
 });
+var commitDecisionSchema = import_zod.z.enum(["pass", "block", "warn"]);
 var commitGateResultSchema = import_zod.z.object({
   passed: import_zod.z.boolean(),
-  failures: import_zod.z.array(import_zod.z.string())
+  decision: commitDecisionSchema,
+  failures: import_zod.z.array(import_zod.z.string()),
+  warnings: import_zod.z.array(import_zod.z.string()),
+  preExistingFailures: import_zod.z.array(import_zod.z.string())
+});
+var evidenceBaselineSchema = import_zod.z.object({
+  capturedAt: import_zod.z.string().min(1),
+  failedCheckNames: import_zod.z.array(import_zod.z.string())
 });
 var taskReportSchema = import_zod.z.object({
   taskId: import_zod.z.string().min(1),
@@ -152,6 +183,40 @@ var taskReportSchema = import_zod.z.object({
   commitReady: import_zod.z.boolean(),
   summary: import_zod.z.string().min(1),
   generatedAt: import_zod.z.string().min(1)
+});
+var feedbackEntrySchema = import_zod.z.object({
+  taskId: import_zod.z.string().min(1),
+  goal: import_zod.z.string().min(1),
+  decision: commitDecisionSchema,
+  completedAt: import_zod.z.string().min(1),
+  completedStages: import_zod.z.array(stageMarkerSchema),
+  retryCount: import_zod.z.number().int().nonnegative(),
+  template: templateNameSchema.optional(),
+  riskLevel: riskLevelSchema.optional(),
+  changedFilesCount: import_zod.z.number().int().nonnegative(),
+  failureReason: import_zod.z.string().optional(),
+  failureStage: stageMarkerSchema.optional()
+});
+var agentRoleSchema = import_zod.z.enum([
+  "requirement",
+  "designer",
+  "developer",
+  "reviewer",
+  "tester"
+]);
+var agentManifestSchema = import_zod.z.object({
+  role: agentRoleSchema,
+  displayName: import_zod.z.string().min(1),
+  description: import_zod.z.string().min(1),
+  stage: workflowStageSchema,
+  enabled: import_zod.z.boolean(),
+  models: import_zod.z.object({
+    "claude-code": import_zod.z.string().min(1).optional(),
+    codex: import_zod.z.string().min(1).optional(),
+    "gemini-cli": import_zod.z.string().min(1).optional()
+  }),
+  toolWhitelist: import_zod.z.array(import_zod.z.string()),
+  prompt: import_zod.z.string()
 });
 var templateDraftSchema = import_zod.z.object({
   name: import_zod.z.string().min(1),
@@ -190,19 +255,25 @@ function serializeFlatYaml(data) {
 }
 function parseFlatYaml(text) {
   const result = {};
+  let currentKey = null;
   const lines = text.split(/\r?\n/);
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) {
       continue;
     }
+    if (line.startsWith("- ") && currentKey) {
+      const item = line.slice(2).trim();
+      const existing = result[currentKey];
+      result[currentKey] = existing ? `${existing},${item}` : item;
+      continue;
+    }
     const separatorIndex = line.indexOf(":");
     if (separatorIndex === -1) {
       continue;
     }
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    result[key] = value;
+    currentKey = line.slice(0, separatorIndex).trim();
+    result[currentKey] = line.slice(separatorIndex + 1).trim();
   }
   return result;
 }
@@ -216,7 +287,11 @@ function parseStringList(value) {
   if (!value) {
     return [];
   }
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "[]") {
+    return [];
+  }
+  return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
 }
 function validateHarnessConfig(config) {
   return parseWithSchema(harnessConfigSchema, config, "harness config");
@@ -325,6 +400,47 @@ function serializeTaskReport(report) {
 function parseTaskReport(text) {
   return parseWithSchema(taskReportSchema, JSON.parse(text), "task report");
 }
+function serializeAgentManifestYaml(manifest) {
+  const validated = parseWithSchema(agentManifestSchema, manifest, "agent manifest");
+  return serializeFlatYaml({
+    role: validated.role,
+    display_name: validated.displayName,
+    description: validated.description,
+    stage: validated.stage,
+    enabled: validated.enabled,
+    model_claude_code: validated.models["claude-code"] ?? "",
+    model_codex: validated.models.codex ?? "",
+    model_gemini_cli: validated.models["gemini-cli"] ?? "",
+    tool_whitelist: validated.toolWhitelist
+  });
+}
+function parseAgentManifestYaml(text) {
+  const raw = parseFlatYaml(text);
+  const models = {};
+  if (raw.model_claude_code) {
+    models["claude-code"] = raw.model_claude_code;
+  }
+  if (raw.model_codex) {
+    models.codex = raw.model_codex;
+  }
+  if (raw.model_gemini_cli) {
+    models["gemini-cli"] = raw.model_gemini_cli;
+  }
+  return parseWithSchema(
+    agentManifestSchema,
+    {
+      role: raw.role ?? "",
+      displayName: raw.display_name ?? "",
+      description: raw.description ?? "",
+      stage: raw.stage ?? "",
+      enabled: parseBoolean(raw.enabled, true),
+      models,
+      toolWhitelist: parseStringList(raw.tool_whitelist),
+      prompt: ""
+    },
+    "agent manifest"
+  );
+}
 function validateTemplateDraft(template) {
   return parseWithSchema(templateDraftSchema, template, "template draft");
 }
@@ -368,15 +484,21 @@ function parseTemplateDraft(text) {
   SHARED_PACKAGE_NAME,
   adapterKindSchema,
   adapterOutputSchema,
+  agentManifestSchema,
+  agentRoleSchema,
   checkStatusSchema,
+  commitDecisionSchema,
   commitGateResultSchema,
   contractSchema,
+  evidenceBaselineSchema,
   evidenceCheckResultSchema,
   evidenceResultSchema,
+  feedbackEntrySchema,
   harnessConfigSchema,
   hostNameSchema,
   hostSubagentConfigSchema,
   packageInfo,
+  parseAgentManifestYaml,
   parseBoolean,
   parseContract,
   parseFlatYaml,
@@ -387,11 +509,13 @@ function parseTemplateDraft(text) {
   projectTypeSchema,
   requiredCheckSchema,
   riskLevelSchema,
+  serializeAgentManifestYaml,
   serializeContract,
   serializeFlatYaml,
   serializeHarnessConfig,
   serializeTaskReport,
   serializeTemplateDraft,
+  stageMarkerSchema,
   taskReportSchema,
   taskStatusSchema,
   templateDraftSchema,
@@ -399,5 +523,6 @@ function parseTemplateDraft(text) {
   validateContract,
   validateHarnessConfig,
   validateTaskReport,
-  validateTemplateDraft
+  validateTemplateDraft,
+  workflowStageSchema
 });

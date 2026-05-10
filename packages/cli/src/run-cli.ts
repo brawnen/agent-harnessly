@@ -1,3 +1,5 @@
+import { runArchive } from './commands/archive';
+import { runEvidenceBaseline } from './commands/evidence-baseline';
 import { runInit } from './commands/init';
 import { runHostCompletionGate } from './commands/host/completion-gate';
 import { runHostAgentEvent } from './commands/host/agent-event';
@@ -27,6 +29,9 @@ function printUsage(): void {
       '  harnessly run --resume <task-id>',
       '  harnessly run [--skip-confirm] --adapter custom|codex --adapter-command "<cmd>" "<goal>"',
       '  harnessly template promote [task-id] [--name <template-name>]',
+      '  harnessly archive requirement|design|both <task-id> [--topic <name>] [--force]',
+      '  harnessly archive requirement|design|both --latest [--topic <name>] [--force]',
+      '  harnessly evidence baseline [--show] [--clear] [--json]',
       '  harnessly host install [--host auto|all|claude-code|codex|gemini-cli]',
       '  harnessly host status [--json]',
       '  harnessly host sync [--host auto|all|claude-code|codex|gemini-cli]',
@@ -79,6 +84,16 @@ export async function runCli(argv: string[]): Promise<void> {
 
   if (command === 'template' && subcommand === 'promote') {
     await runTemplatePromote(parsed.flags, rest);
+    return;
+  }
+
+  if (command === 'archive') {
+    await runArchive(parsed.flags, [subcommand, ...rest].filter(Boolean));
+    return;
+  }
+
+  if (command === 'evidence' && subcommand === 'baseline') {
+    await runEvidenceBaseline(parsed.flags);
     return;
   }
 

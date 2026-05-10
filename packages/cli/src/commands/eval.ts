@@ -33,7 +33,7 @@ export async function runEval(
   const previousReport = await manager.loadReport(taskId, workDir);
 
   ctx.state.status = 'verifying';
-  ctx.state.currentStage = 'eval';
+  ctx.state.currentStage = 'test';
   await manager.saveState(ctx);
 
   const evidence = await collectEvidence(workDir, ctx.config, ctx.contract);

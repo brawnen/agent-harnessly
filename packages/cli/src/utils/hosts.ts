@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getHarnessPaths, loadHarnessConfig } from '@harnessly/core';
+import { getHarnessPaths, loadAgentManifests, loadHarnessConfig } from '@harnessly/core';
 import { renderClaudeCodeManagedFiles } from '@harnessly/host-claude-code';
 import { renderCodexManagedFiles } from '@harnessly/host-codex';
 import {
@@ -10,7 +10,12 @@ import {
   parseHostManifest,
   serializeHostManifest,
 } from '@harnessly/host-shared';
-import type { HarnessConfig, HostManifest, HostName } from '@harnessly/shared';
+import type {
+  AgentManifest,
+  HarnessConfig,
+  HostManifest,
+  HostName,
+} from '@harnessly/shared';
 
 async function readFileIfExists(filePath: string): Promise<string | null> {
   try {
@@ -100,14 +105,19 @@ export async function loadEnabledHosts(workDir: string, requestedHost?: string):
 export function renderRepoLocalShell(
   manifest: HostManifest,
   config: HarnessConfig,
+  agentManifests: AgentManifest[] = [],
 ): Record<string, string> {
   switch (manifest.host) {
     case 'claude-code':
-      return renderClaudeCodeManagedFiles(manifest, config.hostSubagents);
+      return renderClaudeCodeManagedFiles(manifest, {
+        subagents: config.hostSubagents,
+        agentManifests,
+      });
     case 'codex':
       return renderCodexManagedFiles(manifest, {
         subagents: config.hostSubagents,
         userPromptSubmitHookEnabled: config.codexUserPromptSubmitHookEnabled,
+        agentManifests,
       });
     default:
       return {};
@@ -118,10 +128,12 @@ export async function installHostShells(workDir: string, requestedHost?: string)
   const installedPaths: string[] = [];
   const hosts = await loadEnabledHosts(workDir, requestedHost);
   const config = await loadHarnessConfig(workDir);
+  // 加载 v3-core 5 角色 manifest（缺失也不报错；host renderer 会回退到老的 2 角色）
+  const agentManifests = await loadAgentManifests(workDir);
 
   for (const host of hosts) {
     const manifest = await ensureHostManifest(workDir, host);
-    const files = renderRepoLocalShell(manifest, config);
+    const files = renderRepoLocalShell(manifest, config, agentManifests);
 
     for (const [relativePath, content] of Object.entries(files)) {
       const absolutePath = path.join(workDir, relativePath);
@@ -143,6 +155,7 @@ export interface HostStatusRow {
 
 export async function collectHostStatus(workDir: string): Promise<HostStatusRow[]> {
   const config = await loadHarnessConfig(workDir);
+  const agentManifests = await loadAgentManifests(workDir);
   const rows: HostStatusRow[] = [];
 
   for (const host of config.enabledHosts) {
@@ -160,7 +173,7 @@ export async function collectHostStatus(workDir: string): Promise<HostStatusRow[
     }
 
     const manifest = parseHostManifest(manifestText);
-    const expectedFiles = renderRepoLocalShell(manifest, config);
+    const expectedFiles = renderRepoLocalShell(manifest, config, agentManifests);
     let shellStatus: HostStatusRow['shell'] = 'installed';
 
     for (const [relativePath, expectedContent] of Object.entries(expectedFiles)) {

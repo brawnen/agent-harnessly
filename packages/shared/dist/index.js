@@ -39,6 +39,20 @@ var taskStatusSchema = z.enum([
   "passed",
   "failed"
 ]);
+var workflowStageSchema = z.enum([
+  "spec",
+  "design",
+  "execute",
+  "review",
+  "test",
+  "commit_gate"
+]);
+var stageMarkerSchema = z.union([
+  workflowStageSchema,
+  z.literal("created"),
+  z.literal("failed"),
+  z.literal("retry")
+]);
 var checkStatusSchema = z.enum(["passed", "failed", "skipped"]);
 var harnessConfigSchema = z.object({
   version: z.number().int().nonnegative(),
@@ -80,9 +94,17 @@ var evidenceResultSchema = z.object({
   checks: z.array(evidenceCheckResultSchema),
   changedFiles: z.array(z.string())
 });
+var commitDecisionSchema = z.enum(["pass", "block", "warn"]);
 var commitGateResultSchema = z.object({
   passed: z.boolean(),
-  failures: z.array(z.string())
+  decision: commitDecisionSchema,
+  failures: z.array(z.string()),
+  warnings: z.array(z.string()),
+  preExistingFailures: z.array(z.string())
+});
+var evidenceBaselineSchema = z.object({
+  capturedAt: z.string().min(1),
+  failedCheckNames: z.array(z.string())
 });
 var taskReportSchema = z.object({
   taskId: z.string().min(1),
@@ -93,6 +115,40 @@ var taskReportSchema = z.object({
   commitReady: z.boolean(),
   summary: z.string().min(1),
   generatedAt: z.string().min(1)
+});
+var feedbackEntrySchema = z.object({
+  taskId: z.string().min(1),
+  goal: z.string().min(1),
+  decision: commitDecisionSchema,
+  completedAt: z.string().min(1),
+  completedStages: z.array(stageMarkerSchema),
+  retryCount: z.number().int().nonnegative(),
+  template: templateNameSchema.optional(),
+  riskLevel: riskLevelSchema.optional(),
+  changedFilesCount: z.number().int().nonnegative(),
+  failureReason: z.string().optional(),
+  failureStage: stageMarkerSchema.optional()
+});
+var agentRoleSchema = z.enum([
+  "requirement",
+  "designer",
+  "developer",
+  "reviewer",
+  "tester"
+]);
+var agentManifestSchema = z.object({
+  role: agentRoleSchema,
+  displayName: z.string().min(1),
+  description: z.string().min(1),
+  stage: workflowStageSchema,
+  enabled: z.boolean(),
+  models: z.object({
+    "claude-code": z.string().min(1).optional(),
+    codex: z.string().min(1).optional(),
+    "gemini-cli": z.string().min(1).optional()
+  }),
+  toolWhitelist: z.array(z.string()),
+  prompt: z.string()
 });
 var templateDraftSchema = z.object({
   name: z.string().min(1),
@@ -131,19 +187,25 @@ function serializeFlatYaml(data) {
 }
 function parseFlatYaml(text) {
   const result = {};
+  let currentKey = null;
   const lines = text.split(/\r?\n/);
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) {
       continue;
     }
+    if (line.startsWith("- ") && currentKey) {
+      const item = line.slice(2).trim();
+      const existing = result[currentKey];
+      result[currentKey] = existing ? `${existing},${item}` : item;
+      continue;
+    }
     const separatorIndex = line.indexOf(":");
     if (separatorIndex === -1) {
       continue;
     }
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    result[key] = value;
+    currentKey = line.slice(0, separatorIndex).trim();
+    result[currentKey] = line.slice(separatorIndex + 1).trim();
   }
   return result;
 }
@@ -157,7 +219,11 @@ function parseStringList(value) {
   if (!value) {
     return [];
   }
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "[]") {
+    return [];
+  }
+  return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
 }
 function validateHarnessConfig(config) {
   return parseWithSchema(harnessConfigSchema, config, "harness config");
@@ -266,6 +332,47 @@ function serializeTaskReport(report) {
 function parseTaskReport(text) {
   return parseWithSchema(taskReportSchema, JSON.parse(text), "task report");
 }
+function serializeAgentManifestYaml(manifest) {
+  const validated = parseWithSchema(agentManifestSchema, manifest, "agent manifest");
+  return serializeFlatYaml({
+    role: validated.role,
+    display_name: validated.displayName,
+    description: validated.description,
+    stage: validated.stage,
+    enabled: validated.enabled,
+    model_claude_code: validated.models["claude-code"] ?? "",
+    model_codex: validated.models.codex ?? "",
+    model_gemini_cli: validated.models["gemini-cli"] ?? "",
+    tool_whitelist: validated.toolWhitelist
+  });
+}
+function parseAgentManifestYaml(text) {
+  const raw = parseFlatYaml(text);
+  const models = {};
+  if (raw.model_claude_code) {
+    models["claude-code"] = raw.model_claude_code;
+  }
+  if (raw.model_codex) {
+    models.codex = raw.model_codex;
+  }
+  if (raw.model_gemini_cli) {
+    models["gemini-cli"] = raw.model_gemini_cli;
+  }
+  return parseWithSchema(
+    agentManifestSchema,
+    {
+      role: raw.role ?? "",
+      displayName: raw.display_name ?? "",
+      description: raw.description ?? "",
+      stage: raw.stage ?? "",
+      enabled: parseBoolean(raw.enabled, true),
+      models,
+      toolWhitelist: parseStringList(raw.tool_whitelist),
+      prompt: ""
+    },
+    "agent manifest"
+  );
+}
 function validateTemplateDraft(template) {
   return parseWithSchema(templateDraftSchema, template, "template draft");
 }
@@ -308,15 +415,21 @@ export {
   SHARED_PACKAGE_NAME,
   adapterKindSchema,
   adapterOutputSchema,
+  agentManifestSchema,
+  agentRoleSchema,
   checkStatusSchema,
+  commitDecisionSchema,
   commitGateResultSchema,
   contractSchema,
+  evidenceBaselineSchema,
   evidenceCheckResultSchema,
   evidenceResultSchema,
+  feedbackEntrySchema,
   harnessConfigSchema,
   hostNameSchema,
   hostSubagentConfigSchema,
   packageInfo,
+  parseAgentManifestYaml,
   parseBoolean,
   parseContract,
   parseFlatYaml,
@@ -327,11 +440,13 @@ export {
   projectTypeSchema,
   requiredCheckSchema,
   riskLevelSchema,
+  serializeAgentManifestYaml,
   serializeContract,
   serializeFlatYaml,
   serializeHarnessConfig,
   serializeTaskReport,
   serializeTemplateDraft,
+  stageMarkerSchema,
   taskReportSchema,
   taskStatusSchema,
   templateDraftSchema,
@@ -339,5 +454,6 @@ export {
   validateContract,
   validateHarnessConfig,
   validateTaskReport,
-  validateTemplateDraft
+  validateTemplateDraft,
+  workflowStageSchema
 };

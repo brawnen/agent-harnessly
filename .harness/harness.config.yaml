@@ -2,7 +2,7 @@ version: 1
 project_type: node
 required_checks: build,lint,typecheck,test
 default_host: codex
-enabled_hosts: codex
+enabled_hosts: codex,claude-code
 install_repo_local_shells: true
 source_of_truth_dir: .harness/hosts
 fallback_create_task_without_planner: false

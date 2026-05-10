@@ -1,5 +1,5 @@
 // src/index.ts
-import { createHostManifest } from "@harnessly/host-shared";
+import { createHostManifest, renderCodexSubagentFile } from "@harnessly/host-shared";
 var DEFAULT_SUBAGENTS = {
   planner: {
     useHostPlanMode: true,
@@ -21,19 +21,21 @@ function renderCodexConfig() {
 }
 function isHostSubagentConfig(value) {
   return Boolean(
-    value && typeof value === "object" && "planner" in value && "evaluator" in value && !("subagents" in value)
+    value && typeof value === "object" && "planner" in value && "evaluator" in value && !("subagents" in value) && !("agentManifests" in value)
   );
 }
 function resolveCodexManagedFilesOptions(options = {}) {
   if (isHostSubagentConfig(options)) {
     return {
       subagents: options,
-      userPromptSubmitHookEnabled: true
+      userPromptSubmitHookEnabled: true,
+      agentManifests: []
     };
   }
   return {
     subagents: options.subagents ?? DEFAULT_SUBAGENTS,
-    userPromptSubmitHookEnabled: options.userPromptSubmitHookEnabled ?? true
+    userPromptSubmitHookEnabled: options.userPromptSubmitHookEnabled ?? true,
+    agentManifests: options.agentManifests ?? []
   };
 }
 function renderHookCommand(command) {
@@ -183,6 +185,7 @@ function renderCodexHookIo(manifest) {
     "    `- task_id: ${result.activeTaskId}`,",
     "    `- goal: ${result.task.goal}`,",
     "    `- status: ${result.task.status}`,",
+    '    `- current_stage: ${result.task.currentStage ?? "unknown"}`,',
     "    `- retry_count: ${result.retryCount ?? 0}`,",
     "    `- last_failure: ${result.lastFailureReason ?? 'none'}`,",
     '    `- recommendation: ${result.recommendation ?? "resume"}`,',
@@ -193,19 +196,27 @@ function renderCodexHookIo(manifest) {
     "function buildPromptSubmitContext(result, prompt) {",
     "  const safePrompt = typeof prompt === 'string' ? prompt.trim() : '';",
     "  const quotedPrompt = JSON.stringify(safePrompt);",
+    "  const recommendedAgent = result?.recommendedAgent || null;",
+    "  const activeStage = result?.activeStage || null;",
     "  if (result?.action === 'resume_task' && result?.activeTaskId) {",
-    "    return [",
+    "    const lines = [",
     "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u7EED\u63A5\u5F53\u524D\u4EFB\u52A1\u3002',",
     "      `- active_task_id: ${result.activeTaskId}`,",
+    "      activeStage ? `- active_stage: ${activeStage}` : null,",
     "      '\u8BF7\u4F18\u5148\u6CBF\u7528\u5F53\u524D active task \u7EE7\u7EED\uFF0C\u800C\u4E0D\u662F\u65B0\u5EFA\u4EFB\u52A1\u3002',",
-    "    ].join('\\n');",
+    "      recommendedAgent",
+    "        ? `\u63A8\u8350\u7531 ${recommendedAgent} \u63A5\u624B\u5F53\u524D\u9636\u6BB5\uFF1Bexecute \u9636\u6BB5\u7531\u4E3B agent \u81EA\u5DF1\u6267\u884C\u3002`",
+    "        : null,",
+    "    ].filter(Boolean);",
+    "    return lines.join('\\n');",
     "  }",
     "  if (result?.action === 'delegate_to_planner' && safePrompt) {",
+    "    const agent = recommendedAgent || 'harness-planner';",
     "    return [",
     "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0\u4EFB\u52A1\u3002',",
-    "      '\u8BF7 spawn custom agent named harness-planner\uFF0C\u7531 Planner \u5229\u7528\u5BBF\u4E3B plan mode \u5B8C\u6210\u76EE\u6807\u6F84\u6E05\u3001scope \u548C\u9A8C\u6536\u6807\u51C6\u5EFA\u6A21\u3002',",
-    "      'Planner \u5FC5\u987B\u751F\u6210\u6216\u5B9A\u4F4D .harness/tasks/<task-id>/contract.yaml \u548C plan.md\uFF1B\u4E0D\u8981\u53EA\u8FD4\u56DE\u53E3\u5934\u8BA1\u5212\u3002',",
-    "      '\u5982\u5F53\u524D\u5BBF\u4E3B\u65E0\u6CD5\u7A33\u5B9A\u8C03\u7528 Planner\uFF0C\u518D\u6309 repo \u914D\u7F6E\u964D\u7EA7\u5230 hook / command bridge / manual-headless\u3002',",
+    "      `\u8BF7 spawn custom agent named ${agent}\uFF0C\u7531\u5B83\u5B8C\u6210 SPEC \u9636\u6BB5\u9700\u6C42\u6F84\u6E05\u4E0E\u53EF\u9A8C\u6536\u70B9\u5217\u4E3E\u3002`,",
+    "      `${agent} \u5FC5\u987B\u751F\u6210\u6216\u5B9A\u4F4D .harness/tasks/<task-id>/contract.yaml \u4E0E plan.md\uFF1B\u4E0D\u8981\u53EA\u8FD4\u56DE\u53E3\u5934\u8BA1\u5212\u3002`,",
+    "      '\u5982\u5F53\u524D\u5BBF\u4E3B\u65E0\u6CD5\u7A33\u5B9A\u8C03\u7528 sub-agent\uFF0C\u518D\u6309 repo \u914D\u7F6E\u964D\u7EA7\u5230 hook / command bridge / manual-headless\u3002',",
     "    ].join('\\n');",
     "  }",
     "  if (result?.action === 'create_task' && safePrompt) {",
@@ -230,11 +241,15 @@ function renderCodexHookIo(manifest) {
     "function buildCompletionDecision(result) {",
     "  if (result?.pass === false) {",
     '    const nextStep = result.nextStep ? `\\n\u4E0B\u4E00\u6B65\uFF1A${result.nextStep}` : "";',
-    '    const evaluatorAgent = result.evaluatorAgent ? `\\n\u5EFA\u8BAE\u59D4\u6D3E\uFF1A${result.evaluatorAgent}` : "";',
+    "    const agent = result.recommendedAgent || result.evaluatorAgent;",
+    '    const agentHint = agent ? `\\n\u5EFA\u8BAE\u59D4\u6D3E\uFF1A${agent}` : "";',
     '    const evalCommand = result.evalCommand ? `\\n\u53EF\u6267\u884C\u547D\u4EE4\uFF1A${result.evalCommand}` : "";',
+    "    const stageHint = result.lastFailureStage",
+    "      ? `\\n\u5931\u8D25\u4F4D\u7F6E\uFF1A${result.lastFailureStage}`",
+    '      : (result.activeStage ? `\\n\u5F53\u524D\u9636\u6BB5\uFF1A${result.activeStage}` : "");',
     "    return {",
     "      status: 'block',",
-    "      reason: `Harnessly completion gate \u672A\u901A\u8FC7\uFF1A${result.reason}${evaluatorAgent}${evalCommand}${nextStep}`,",
+    "      reason: `Harnessly completion gate \u672A\u901A\u8FC7\uFF1A${result.reason}${stageHint}${agentHint}${evalCommand}${nextStep}`,",
     "    };",
     "  }",
     "  return {",
@@ -335,7 +350,11 @@ function renderCodexStopHook() {
 }
 function renderCodexPlannerAgent(config = DEFAULT_SUBAGENTS) {
   const model = config.planner.models.codex ?? "gpt-5.4-mini";
-  const planModeLine = config.planner.useHostPlanMode ? "- \u4F18\u5148\u4F7F\u7528\u5BBF\u4E3B plan mode \u5B8C\u6210\u76EE\u6807\u6F84\u6E05\u3001scope\u3001acceptance criteria \u548C\u6267\u884C\u6B65\u9AA4\u5EFA\u6A21\u3002" : "- \u4E0D\u8981\u6C42\u4F7F\u7528\u5BBF\u4E3B plan mode\uFF1B\u4F46\u4ECD\u5FC5\u987B\u5728\u6267\u884C\u524D\u5B8C\u6210\u76EE\u6807\u6F84\u6E05\u3001scope \u548C\u9A8C\u6536\u6807\u51C6\u5EFA\u6A21\u3002";
+  const planModeLine = config.planner.useHostPlanMode ? [
+    "- plan mode \u5DF2\u5F00\u542F\uFF08\u7528\u6237\u5728 .harness/harness.config.yaml \u4E2D\u663E\u5F0F\u542F\u7528\uFF09\u3002\u8FDB\u5165 plan mode \u5B8C\u6210\u9700\u6C42\u6F84\u6E05\u540E\uFF0C\u8BA1\u5212\u5FC5\u987B\u843D\u76D8\u5230 .harness/tasks/<task-id>/planner-plan.md \u4F5C\u4E3A\u72EC\u7ACB\u5DE5\u4EF6\u3002",
+    "- \u672A\u7ECF\u7528\u6237\u9010\u6761 review-and-approve \u7684 plan \u4E0D\u80FD\u8F6C\u4E0B\u6E38\u6267\u884C\u3002\u4E0D\u4E25\u683C review \u7684 plan \u7B49\u4E8E\u7F16\u7801\u9519\u8BEF\u6307\u4EE4\u3002",
+    "- \u8BE6\u7EC6\u7ACB\u573A\u53C2\u89C1 docs/design/agent-harness-product-design-v3.md \xA74.6\u3002"
+  ].join("\n") : "- \u9ED8\u8BA4\u8D70\u7ED3\u6784\u5316\u4EA7\u51FA\u8DEF\u5F84\uFF1A\u76F4\u63A5\u901A\u8FC7\u5BF9\u8BDD\u4E0E\u4E3B Agent / \u7528\u6237\u6F84\u6E05\u9700\u6C42\uFF0C\u4E0D\u8FDB\u5165 plan mode\uFF0C\u76F4\u63A5\u4EA7\u51FA .harness/tasks/<task-id>/contract.yaml \u548C plan.md\u3002";
   return [
     "# Managed by Harnessly",
     'name = "harness-planner"',
@@ -390,7 +409,7 @@ function renderCodexEvaluatorAgent(config = DEFAULT_SUBAGENTS) {
 }
 function renderCodexManagedFiles(manifest, config = {}) {
   const options = resolveCodexManagedFilesOptions(config);
-  return {
+  const files = {
     ".codex/config.toml": renderCodexConfig(),
     ".codex/hooks.json": renderCodexHooks(manifest, {
       userPromptSubmitHookEnabled: options.userPromptSubmitHookEnabled
@@ -402,6 +421,13 @@ function renderCodexManagedFiles(manifest, config = {}) {
     ".codex/agents/harness-planner.toml": renderCodexPlannerAgent(options.subagents),
     ".codex/agents/harness-evaluator.toml": renderCodexEvaluatorAgent(options.subagents)
   };
+  for (const agentManifest of options.agentManifests) {
+    if (!agentManifest.enabled) {
+      continue;
+    }
+    files[`.codex/agents/harness-${agentManifest.role}.toml`] = renderCodexSubagentFile(agentManifest);
+  }
+  return files;
 }
 export {
   getCodexHostManifest,

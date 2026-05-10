@@ -9,13 +9,17 @@ function matchesPattern(filePath: string, pattern: string): boolean {
     return true;
   }
 
+  if (pattern.includes('*')) {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
+    return new RegExp(escaped).test(filePath);
+  }
+
   if (pattern.endsWith('/')) {
     return filePath.startsWith(pattern);
   }
 
-  if (pattern.includes('*')) {
-    const normalized = pattern.replace(/\*/g, '');
-    return filePath.includes(normalized);
+  if (pattern.startsWith('.')) {
+    return filePath.endsWith(pattern);
   }
 
   return filePath.startsWith(pattern) || filePath === pattern;

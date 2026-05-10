@@ -1,0 +1,9 @@
+role: tester
+display_name: Harness Tester
+description: 在 TEST 阶段跑 required checks 与 acceptance 校验
+stage: test
+enabled: true
+model_claude_code: sonnet
+model_codex: gpt-5.4
+model_gemini_cli: gemini-pro
+tool_whitelist: Read,Bash

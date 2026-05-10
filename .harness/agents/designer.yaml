@@ -1,0 +1,9 @@
+role: designer
+display_name: Harness Designer
+description: 在 DESIGN 阶段基于 contract 列实施步骤、依赖与风险
+stage: design
+enabled: true
+model_claude_code: sonnet
+model_codex: gpt-5.4
+model_gemini_cli: gemini-pro
+tool_whitelist: Read,Bash,Glob,Grep

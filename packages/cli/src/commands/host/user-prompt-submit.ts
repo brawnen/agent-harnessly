@@ -1,8 +1,17 @@
-import { loadHarnessConfig, TaskManager, WorkflowEngine } from '@harnessly/core';
+import {
+  collectEnabledRoles,
+  loadAgentManifests,
+  loadHarnessConfig,
+  pickRecommendedAgent,
+  TaskManager,
+  WorkflowEngine,
+} from '@harnessly/core';
+import type { StageMarker } from '@harnessly/shared';
 
 import { appendHarnessEvent } from '../../utils/events';
 import { readActiveTaskId } from '../../utils/hosts';
 import { printJson } from '../../utils/output';
+import { clearPendingDelegation, readPendingDelegation, writePendingDelegation } from '../../utils/planner-fallback';
 
 type PromptAction = 'chat' | 'delegate_to_planner' | 'create_task' | 'resume_task';
 type TaskKind =
@@ -167,6 +176,30 @@ function classifyPrompt(
   };
 }
 
+/**
+ * 根据 action + 当前 task stage + enabled 角色，输出 stage-aware 的推荐 sub-agent。
+ * 没有合适角色时返回 null（hook 文案会回退到老的 harness-planner / harness-evaluator）。
+ */
+async function resolveRecommendedAgent(
+  workDir: string,
+  action: PromptAction,
+  activeStage: StageMarker | null,
+): Promise<string | null> {
+  if (action !== 'delegate_to_planner' && action !== 'resume_task') {
+    return null;
+  }
+
+  const manifests = await loadAgentManifests(workDir);
+  const enabledRoles = collectEnabledRoles(manifests);
+
+  if (action === 'delegate_to_planner') {
+    return pickRecommendedAgent('new_task', null, enabledRoles);
+  }
+
+  // action === 'resume_task'
+  return pickRecommendedAgent('resume_task', activeStage, enabledRoles);
+}
+
 export async function runHostUserPromptSubmit(
   flags: Record<string, string | boolean>,
   positionals: string[],
@@ -177,12 +210,29 @@ export async function runHostUserPromptSubmit(
   const manager = new TaskManager();
   const config = await loadHarnessConfig(workDir);
   const activeTaskId = await readActiveTaskId(workDir);
+
+  // 加载 active task 的 currentStage（如有），用于 resume_task 的角色路由
+  let activeStage: StageMarker | null = null;
+  if (activeTaskId) {
+    try {
+      const ctx = await manager.load(activeTaskId, workDir);
+      activeStage = ctx.state.currentStage;
+    } catch {
+      // active task 文件存在但 task 工件丢失：忽略，按无 stage 处理
+    }
+  }
+
+  // 自动降级：上次 Planner 委派未产生 task，本次直接 create_task
+  const pending = await readPendingDelegation(workDir);
   const decision = classifyPrompt(
     prompt,
     Boolean(activeTaskId),
-    config.fallbackCreateTaskWithoutPlanner,
+    config.fallbackCreateTaskWithoutPlanner || (pending !== null),
   );
   const { action } = decision;
+
+  // v3-core 5 角色路由：根据 action + stage 选推荐 sub-agent
+  const recommendedAgent = await resolveRecommendedAgent(workDir, action, activeStage);
 
   await appendHarnessEvent(workDir, {
     type: 'host.intake_decision',
@@ -192,11 +242,14 @@ export async function runHostUserPromptSubmit(
     taskKind: decision.taskKind,
     risk: decision.risk,
     activeTaskId,
+    activeStage,
     plannerAgent: action === 'delegate_to_planner' ? 'harness-planner' : undefined,
+    recommendedAgent,
     taskCreated: false,
   });
 
   if (action === 'create_task') {
+    await clearPendingDelegation(workDir);
     const ctx = await manager.create(prompt, workDir);
     const engine = new WorkflowEngine(manager);
     await engine.run(ctx, {
@@ -218,6 +271,7 @@ export async function runHostUserPromptSubmit(
     printJson({
       prompt,
       activeTaskId: ctx.taskId,
+      activeStage: ctx.state.currentStage,
       action,
       reason: decision.reason,
       taskKind: decision.taskKind,
@@ -226,21 +280,30 @@ export async function runHostUserPromptSubmit(
       taskId: ctx.taskId,
       contractPath: `${ctx.taskDir}/contract.yaml`,
       planPath: `${ctx.taskDir}/plan.md`,
+      recommendedAgent: null,
+      autoFallback: pending !== null,
       nextStep: 'review_contract_and_plan',
     });
     return;
   }
 
+  if (action === 'delegate_to_planner') {
+    await writePendingDelegation(workDir, prompt);
+  }
+
   printJson({
     prompt,
     activeTaskId,
+    activeStage,
     action,
     reason: decision.reason,
     taskKind: decision.taskKind,
     risk: decision.risk,
     taskCreated: false,
     plannerAgent: action === 'delegate_to_planner' ? 'harness-planner' : undefined,
+    recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,
+    autoFallback: pending !== null,
     nextStep:
       action === 'resume_task'
         ? 'resume_existing_task'

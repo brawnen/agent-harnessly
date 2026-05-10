@@ -1,9 +1,13 @@
 import { packageInfo as sharedPackageInfo } from '@harnessly/shared';
 
+export * from './agent';
+export * from './archive';
 export * from './config';
 export * from './contract';
 export * from './evidence';
+export * from './evidence-baseline';
 export * from './execute';
+export * from './feedback-pool';
 export * from './gate';
 export * from './llm';
 export * from './project';
@@ -11,6 +15,7 @@ export * from './plan';
 export * from './promote';
 export * from './prompt';
 export * from './report';
+export * from './review';
 export * from './scaffold';
 export * from './scope';
 export * from './task';

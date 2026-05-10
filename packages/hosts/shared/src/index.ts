@@ -1,5 +1,7 @@
 import {
   HARNESSLY_VERSION,
+  type AgentManifest,
+  type AgentRole,
   type HostLifecycleCommands,
   type HostManifest,
   type HostName,
@@ -16,6 +18,10 @@ export function getRepoLocalShellPaths(host: HostName): string[] {
         '.claude/settings.json',
         '.claude/agents/harness-planner.md',
         '.claude/agents/harness-evaluator.md',
+        '.harness/hosts/claude-code/hooks/session_start.js',
+        '.harness/hosts/claude-code/hooks/user_prompt_submit.js',
+        '.harness/hosts/claude-code/hooks/stop.js',
+        '.harness/hosts/claude-code/hooks/shared/claude-code-hook-io.js',
       ];
     case 'codex':
       return [
@@ -33,6 +39,92 @@ export function getRepoLocalShellPaths(host: HostName): string[] {
     default:
       return [];
   }
+}
+
+/**
+ * 由 v3-core 5 角色 manifest 派生出的 host-specific sub-agent 文件路径。
+ *
+ * 当 manifest.enabled=false 时跳过；
+ * 文件名采用 `harness-<role>.{md|toml}` 命名，避免与老的 harness-planner/evaluator 复合别名冲突。
+ */
+export function getRoleAgentFilePath(host: HostName, role: AgentRole): string | null {
+  switch (host) {
+    case 'claude-code':
+      return `.claude/agents/harness-${role}.md`;
+    case 'codex':
+      return `.codex/agents/harness-${role}.toml`;
+    case 'gemini-cli':
+      // Gemini CLI 当前没有 sub-agent 文件结构，留空
+      return null;
+    default:
+      return null;
+  }
+}
+
+const CLAUDE_CODE_DEFAULT_TOOLS: readonly string[] = ['Read', 'Bash'];
+const CODEX_DEFAULT_REASONING_EFFORT = 'medium';
+const CODEX_DEFAULT_SANDBOX_MODE = 'read-only';
+
+/**
+ * 把 AgentManifest 渲染为 Claude Code 子代理的 Markdown frontmatter + 正文。
+ *
+ * 输出格式契合 https://docs.claude.com/en/docs/claude-code/sub-agents：
+ * ---
+ * name: harness-<role>
+ * description: ...
+ * model: ...
+ * tools: [Read, Bash, ...]
+ * ---
+ *
+ * <prompt>
+ */
+export function renderClaudeCodeSubagentFile(manifest: AgentManifest): string {
+  const model = manifest.models['claude-code'] ?? 'sonnet';
+  const tools =
+    manifest.toolWhitelist.length > 0 ? manifest.toolWhitelist : [...CLAUDE_CODE_DEFAULT_TOOLS];
+
+  const frontmatter = [
+    '---',
+    `name: harness-${manifest.role}`,
+    `description: ${manifest.description}`,
+    `model: ${model}`,
+    'tools:',
+    ...tools.map((tool) => `  - ${tool}`),
+    '---',
+    '',
+  ];
+
+  const body = manifest.prompt.trim().length > 0 ? manifest.prompt : `# Harness ${manifest.role}\n`;
+  const ensureTrailingNewline = body.endsWith('\n') ? body : `${body}\n`;
+
+  return `${frontmatter.join('\n')}${ensureTrailingNewline}`;
+}
+
+/**
+ * 把 AgentManifest 渲染为 Codex 子代理 TOML。
+ *
+ * 输出格式契合 Codex `.codex/agents/<name>.toml`：top-level 键值（不使用 [section]），
+ * developer_instructions 用 triple-double-quote 多行字符串。
+ */
+export function renderCodexSubagentFile(manifest: AgentManifest): string {
+  const model = manifest.models.codex ?? 'gpt-5.4';
+  const promptBody =
+    manifest.prompt.trim().length > 0 ? manifest.prompt : `Harness ${manifest.role} agent.`;
+
+  const lines = [
+    '# Managed by Harnessly',
+    `name = "harness-${manifest.role}"`,
+    `description = ${JSON.stringify(manifest.description)}`,
+    `model = ${JSON.stringify(model)}`,
+    `model_reasoning_effort = ${JSON.stringify(CODEX_DEFAULT_REASONING_EFFORT)}`,
+    `sandbox_mode = ${JSON.stringify(CODEX_DEFAULT_SANDBOX_MODE)}`,
+    'developer_instructions = """',
+    promptBody,
+    '"""',
+    '',
+  ];
+
+  return lines.join('\n');
 }
 
 export function createLifecycleCommands(binaryName = 'harnessly'): HostLifecycleCommands {

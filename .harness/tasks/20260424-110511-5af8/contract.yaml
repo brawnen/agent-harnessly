@@ -1,9 +1,0 @@
-goal: 现在这个项目有个具体的问题，就是在本项目以及其他项目的试用过程中，不能自动生成任务。查一下什么原因
-
-template_name: bug-fix
-risk_level: medium
-scope_include: 相关缺陷代码路径
-scope_exclude: 无关模块,用户级全局配置
-acceptance_criteria: 目标“现在这个项目有个具体的问题，就是在本项目以及其他项目的试用过程中，不能自动生成任务。查一下什么原因
-”已被实现或修复,变更范围与问题直接相关,输出结果可供后续 verify 使用
-out_of_scope: 重构整仓,新增未请求依赖

@@ -1,5 +1,5 @@
-import type { HostManifest, HostSubagentConfig } from '@harnessly/shared';
-import { createHostManifest } from '@harnessly/host-shared';
+import type { AgentManifest, HostManifest, HostSubagentConfig } from '@harnessly/shared';
+import { createHostManifest, renderCodexSubagentFile } from '@harnessly/host-shared';
 
 export interface CodexHookRenderOptions {
   userPromptSubmitHookEnabled?: boolean;
@@ -7,6 +7,11 @@ export interface CodexHookRenderOptions {
 
 export interface CodexManagedFilesOptions extends CodexHookRenderOptions {
   subagents?: HostSubagentConfig;
+  /**
+   * v3-core 5 角色 sub-agent manifest。传入后 renderer 会增量生成
+   * `.codex/agents/harness-<role>.toml`。仅 enabled=true 的角色被渲染。
+   */
+  agentManifests?: AgentManifest[];
 }
 
 const DEFAULT_SUBAGENTS: HostSubagentConfig = {
@@ -35,9 +40,10 @@ function isHostSubagentConfig(value: unknown): value is HostSubagentConfig {
   return Boolean(
     value &&
       typeof value === 'object' &&
-      'planner' in value &&
-      'evaluator' in value &&
-      !('subagents' in value),
+      'planner' in (value as Record<string, unknown>) &&
+      'evaluator' in (value as Record<string, unknown>) &&
+      !('subagents' in (value as Record<string, unknown>)) &&
+      !('agentManifests' in (value as Record<string, unknown>)),
   );
 }
 
@@ -48,12 +54,14 @@ function resolveCodexManagedFilesOptions(
     return {
       subagents: options,
       userPromptSubmitHookEnabled: true,
+      agentManifests: [],
     };
   }
 
   return {
     subagents: options.subagents ?? DEFAULT_SUBAGENTS,
     userPromptSubmitHookEnabled: options.userPromptSubmitHookEnabled ?? true,
+    agentManifests: options.agentManifests ?? [],
   };
 }
 
@@ -211,6 +219,7 @@ export function renderCodexHookIo(manifest: HostManifest): string {
     '    `- task_id: ${result.activeTaskId}`,',
     '    `- goal: ${result.task.goal}`,',
     '    `- status: ${result.task.status}`,',
+    '    `- current_stage: ${result.task.currentStage ?? "unknown"}`,',
     '    `- retry_count: ${result.retryCount ?? 0}`,',
     "    `- last_failure: ${result.lastFailureReason ?? 'none'}`,",
     '    `- recommendation: ${result.recommendation ?? "resume"}`,',
@@ -221,19 +230,27 @@ export function renderCodexHookIo(manifest: HostManifest): string {
     'function buildPromptSubmitContext(result, prompt) {',
     "  const safePrompt = typeof prompt === 'string' ? prompt.trim() : '';",
     '  const quotedPrompt = JSON.stringify(safePrompt);',
+    '  const recommendedAgent = result?.recommendedAgent || null;',
+    '  const activeStage = result?.activeStage || null;',
     "  if (result?.action === 'resume_task' && result?.activeTaskId) {",
-    '    return [',
+    '    const lines = [',
     "      '检测到这条输入更像续接当前任务。',",
     '      `- active_task_id: ${result.activeTaskId}`,',
+    '      activeStage ? `- active_stage: ${activeStage}` : null,',
     "      '请优先沿用当前 active task 继续，而不是新建任务。',",
-    "    ].join('\\n');",
+    '      recommendedAgent',
+    '        ? `推荐由 ${recommendedAgent} 接手当前阶段；execute 阶段由主 agent 自己执行。`',
+    '        : null,',
+    '    ].filter(Boolean);',
+    "    return lines.join('\\n');",
     '  }',
     "  if (result?.action === 'delegate_to_planner' && safePrompt) {",
+    "    const agent = recommendedAgent || 'harness-planner';",
     '    return [',
     "      '检测到这条输入更像新任务。',",
-    "      '请 spawn custom agent named harness-planner，由 Planner 利用宿主 plan mode 完成目标澄清、scope 和验收标准建模。',",
-    "      'Planner 必须生成或定位 .harness/tasks/<task-id>/contract.yaml 和 plan.md；不要只返回口头计划。',",
-    "      '如当前宿主无法稳定调用 Planner，再按 repo 配置降级到 hook / command bridge / manual-headless。',",
+    '      `请 spawn custom agent named ${agent}，由它完成 SPEC 阶段需求澄清与可验收点列举。`,',
+    '      `${agent} 必须生成或定位 .harness/tasks/<task-id>/contract.yaml 与 plan.md；不要只返回口头计划。`,',
+    "      '如当前宿主无法稳定调用 sub-agent，再按 repo 配置降级到 hook / command bridge / manual-headless。',",
     "    ].join('\\n');",
     '  }',
     "  if (result?.action === 'create_task' && safePrompt) {",
@@ -258,11 +275,15 @@ export function renderCodexHookIo(manifest: HostManifest): string {
     'function buildCompletionDecision(result) {',
     '  if (result?.pass === false) {',
     '    const nextStep = result.nextStep ? `\\n下一步：${result.nextStep}` : "";',
-    '    const evaluatorAgent = result.evaluatorAgent ? `\\n建议委派：${result.evaluatorAgent}` : "";',
+    '    const agent = result.recommendedAgent || result.evaluatorAgent;',
+    '    const agentHint = agent ? `\\n建议委派：${agent}` : "";',
     '    const evalCommand = result.evalCommand ? `\\n可执行命令：${result.evalCommand}` : "";',
+    '    const stageHint = result.lastFailureStage',
+    '      ? `\\n失败位置：${result.lastFailureStage}`',
+    '      : (result.activeStage ? `\\n当前阶段：${result.activeStage}` : "");',
     '    return {',
     "      status: 'block',",
-    '      reason: `Harnessly completion gate 未通过：${result.reason}${evaluatorAgent}${evalCommand}${nextStep}`,',
+    '      reason: `Harnessly completion gate 未通过：${result.reason}${stageHint}${agentHint}${evalCommand}${nextStep}`,',
     '    };',
     '  }',
     '  return {',
@@ -368,8 +389,12 @@ export function renderCodexStopHook(): string {
 export function renderCodexPlannerAgent(config: HostSubagentConfig = DEFAULT_SUBAGENTS): string {
   const model = config.planner.models.codex ?? 'gpt-5.4-mini';
   const planModeLine = config.planner.useHostPlanMode
-    ? '- 优先使用宿主 plan mode 完成目标澄清、scope、acceptance criteria 和执行步骤建模。'
-    : '- 不要求使用宿主 plan mode；但仍必须在执行前完成目标澄清、scope 和验收标准建模。';
+    ? [
+        '- plan mode 已开启（用户在 .harness/harness.config.yaml 中显式启用）。进入 plan mode 完成需求澄清后，计划必须落盘到 .harness/tasks/<task-id>/planner-plan.md 作为独立工件。',
+        '- 未经用户逐条 review-and-approve 的 plan 不能转下游执行。不严格 review 的 plan 等于编码错误指令。',
+        '- 详细立场参见 docs/design/agent-harness-product-design-v3.md §4.6。',
+      ].join('\n')
+    : '- 默认走结构化产出路径：直接通过对话与主 Agent / 用户澄清需求，不进入 plan mode，直接产出 .harness/tasks/<task-id>/contract.yaml 和 plan.md。';
 
   return [
     '# Managed by Harnessly',
@@ -432,7 +457,7 @@ export function renderCodexManagedFiles(
 ): Record<string, string> {
   const options = resolveCodexManagedFilesOptions(config);
 
-  return {
+  const files: Record<string, string> = {
     '.codex/config.toml': renderCodexConfig(),
     '.codex/hooks.json': renderCodexHooks(manifest, {
       userPromptSubmitHookEnabled: options.userPromptSubmitHookEnabled,
@@ -444,4 +469,15 @@ export function renderCodexManagedFiles(
     '.codex/agents/harness-planner.toml': renderCodexPlannerAgent(options.subagents),
     '.codex/agents/harness-evaluator.toml': renderCodexEvaluatorAgent(options.subagents),
   };
+
+  // 增量渲染 5 角色 sub-agent 文件（仅 enabled=true）
+  for (const agentManifest of options.agentManifests) {
+    if (!agentManifest.enabled) {
+      continue;
+    }
+    files[`.codex/agents/harness-${agentManifest.role}.toml`] =
+      renderCodexSubagentFile(agentManifest);
+  }
+
+  return files;
 }

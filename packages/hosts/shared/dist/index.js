@@ -12,7 +12,11 @@ function getRepoLocalShellPaths(host) {
       return [
         ".claude/settings.json",
         ".claude/agents/harness-planner.md",
-        ".claude/agents/harness-evaluator.md"
+        ".claude/agents/harness-evaluator.md",
+        ".harness/hosts/claude-code/hooks/session_start.js",
+        ".harness/hosts/claude-code/hooks/user_prompt_submit.js",
+        ".harness/hosts/claude-code/hooks/stop.js",
+        ".harness/hosts/claude-code/hooks/shared/claude-code-hook-io.js"
       ];
     case "codex":
       return [
@@ -30,6 +34,57 @@ function getRepoLocalShellPaths(host) {
     default:
       return [];
   }
+}
+function getRoleAgentFilePath(host, role) {
+  switch (host) {
+    case "claude-code":
+      return `.claude/agents/harness-${role}.md`;
+    case "codex":
+      return `.codex/agents/harness-${role}.toml`;
+    case "gemini-cli":
+      return null;
+    default:
+      return null;
+  }
+}
+var CLAUDE_CODE_DEFAULT_TOOLS = ["Read", "Bash"];
+var CODEX_DEFAULT_REASONING_EFFORT = "medium";
+var CODEX_DEFAULT_SANDBOX_MODE = "read-only";
+function renderClaudeCodeSubagentFile(manifest) {
+  const model = manifest.models["claude-code"] ?? "sonnet";
+  const tools = manifest.toolWhitelist.length > 0 ? manifest.toolWhitelist : [...CLAUDE_CODE_DEFAULT_TOOLS];
+  const frontmatter = [
+    "---",
+    `name: harness-${manifest.role}`,
+    `description: ${manifest.description}`,
+    `model: ${model}`,
+    "tools:",
+    ...tools.map((tool) => `  - ${tool}`),
+    "---",
+    ""
+  ];
+  const body = manifest.prompt.trim().length > 0 ? manifest.prompt : `# Harness ${manifest.role}
+`;
+  const ensureTrailingNewline = body.endsWith("\n") ? body : `${body}
+`;
+  return `${frontmatter.join("\n")}${ensureTrailingNewline}`;
+}
+function renderCodexSubagentFile(manifest) {
+  const model = manifest.models.codex ?? "gpt-5.4";
+  const promptBody = manifest.prompt.trim().length > 0 ? manifest.prompt : `Harness ${manifest.role} agent.`;
+  const lines = [
+    "# Managed by Harnessly",
+    `name = "harness-${manifest.role}"`,
+    `description = ${JSON.stringify(manifest.description)}`,
+    `model = ${JSON.stringify(model)}`,
+    `model_reasoning_effort = ${JSON.stringify(CODEX_DEFAULT_REASONING_EFFORT)}`,
+    `sandbox_mode = ${JSON.stringify(CODEX_DEFAULT_SANDBOX_MODE)}`,
+    'developer_instructions = """',
+    promptBody,
+    '"""',
+    ""
+  ];
+  return lines.join("\n");
 }
 function createLifecycleCommands(binaryName = "harnessly") {
   return {
@@ -82,6 +137,9 @@ export {
   createLifecycleCommands,
   getHostManifestFilename,
   getRepoLocalShellPaths,
+  getRoleAgentFilePath,
   parseHostManifest,
+  renderClaudeCodeSubagentFile,
+  renderCodexSubagentFile,
   serializeHostManifest
 };

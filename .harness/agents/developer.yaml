@@ -1,0 +1,9 @@
+role: developer
+display_name: Harness Developer
+description: 在 EXECUTE 阶段按 plan 执行（headless 适配；主路径下由主 agent 担任）
+stage: execute
+enabled: false
+model_claude_code: sonnet
+model_codex: gpt-5.4
+model_gemini_cli: gemini-pro
+tool_whitelist: Read,Edit,Write,Bash,Glob,Grep

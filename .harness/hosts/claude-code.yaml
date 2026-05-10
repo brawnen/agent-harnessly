@@ -1,0 +1,7 @@
+host: claude-code
+version: 0.0.0
+enabled: true
+repo_local_paths: .claude/settings.json,.claude/agents/harness-planner.md,.claude/agents/harness-evaluator.md,.harness/hosts/claude-code/hooks/session_start.js,.harness/hosts/claude-code/hooks/user_prompt_submit.js,.harness/hosts/claude-code/hooks/stop.js,.harness/hosts/claude-code/hooks/shared/claude-code-hook-io.js
+session_start_command: "/opt/homebrew/Cellar/node/25.9.0_2/bin/node" "/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js" host session-start
+user_prompt_submit_command: "/opt/homebrew/Cellar/node/25.9.0_2/bin/node" "/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js" host user-prompt-submit
+completion_gate_command: "/opt/homebrew/Cellar/node/25.9.0_2/bin/node" "/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js" host completion-gate

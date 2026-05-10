@@ -9,6 +9,7 @@ export const HARNESS_DIRNAME = '.harness';
 
 export interface HarnessPaths {
   harnessDir: string;
+  agentsDir: string;
   domainsDir: string;
   hostsDir: string;
   tasksDir: string;
@@ -23,6 +24,7 @@ export function getHarnessPaths(workDir: string): HarnessPaths {
 
   return {
     harnessDir,
+    agentsDir: path.join(harnessDir, 'agents'),
     domainsDir: path.join(harnessDir, 'domains'),
     hostsDir: path.join(harnessDir, 'hosts'),
     tasksDir: path.join(harnessDir, 'tasks'),
@@ -37,6 +39,7 @@ export async function ensureHarnessDirectories(workDir: string): Promise<Harness
   const paths = getHarnessPaths(workDir);
 
   await mkdir(paths.harnessDir, { recursive: true });
+  await mkdir(paths.agentsDir, { recursive: true });
   await mkdir(paths.domainsDir, { recursive: true });
   await mkdir(paths.hostsDir, { recursive: true });
   await mkdir(paths.tasksDir, { recursive: true });

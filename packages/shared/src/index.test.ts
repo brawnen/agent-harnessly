@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseContract,
+  parseFlatYaml,
   parseHarnessConfig,
+  parseStringList,
   parseTaskReport,
   parseTemplateDraft,
   serializeContract,
@@ -89,7 +91,10 @@ describe('shared contract helpers', () => {
       },
       commitGate: {
         passed: true,
+        decision: 'pass',
         failures: [],
+        warnings: [],
+        preExistingFailures: [],
       },
       commitReady: true,
       summary: '执行与最小验证通过',
@@ -116,6 +121,81 @@ describe('shared contract helpers', () => {
     expect(parseTemplateDraft(serializeTemplateDraft(template))).toEqual(template);
   });
 
+  it('should parse YAML list format for arrays', () => {
+    const yaml = [
+      'goal: test goal',
+      'template_name: bug-fix',
+      'risk_level: low',
+      'scope_include:',
+      '  - src/foo/',
+      '  - src/bar/',
+      'scope_exclude:',
+      '  - docs/',
+      'acceptance_criteria:',
+      '  - test passes',
+      'out_of_scope:',
+      '  - refactor',
+    ].join('\n');
+
+    const contract = parseContract(yaml);
+
+    expect(contract.scopeInclude).toEqual(['src/foo/', 'src/bar/']);
+    expect(contract.scopeExclude).toEqual(['docs/']);
+    expect(contract.acceptanceCriteria).toEqual(['test passes']);
+    expect(contract.outOfScope).toEqual(['refactor']);
+  });
+
+  it('should parse comma-separated format (backward compatible)', () => {
+    const yaml = [
+      'goal: test goal',
+      'template_name: bug-fix',
+      'risk_level: low',
+      'scope_include: src/foo/, src/bar/',
+      'scope_exclude: docs/',
+      'acceptance_criteria: test passes',
+      'out_of_scope: refactor',
+    ].join('\n');
+
+    const contract = parseContract(yaml);
+
+    expect(contract.scopeInclude).toEqual(['src/foo/', 'src/bar/']);
+    expect(contract.scopeExclude).toEqual(['docs/']);
+  });
+
+  it('should handle empty array notation []', () => {
+    expect(parseStringList('[]')).toEqual([]);
+    expect(parseStringList('')).toEqual([]);
+    expect(parseStringList(undefined)).toEqual([]);
+
+    const yaml = [
+      'goal: test',
+      'template_name: bug-fix',
+      'risk_level: low',
+      'scope_include: []',
+      'scope_exclude:',
+      'acceptance_criteria:',
+      'out_of_scope:',
+    ].join('\n');
+
+    const contract = parseContract(yaml);
+    expect(contract.scopeInclude).toEqual([]);
+  });
+
+  it('should parseFlatYaml with mixed kv and list items', () => {
+    const yaml = [
+      'key1: value1',
+      'key2:',
+      '  - item1',
+      '  - item2',
+      'key3: value3, value4',
+    ].join('\n');
+
+    const result = parseFlatYaml(yaml);
+    expect(result['key1']).toBe('value1');
+    expect(result['key2']).toBe('item1,item2');
+    expect(result['key3']).toBe('value3, value4');
+  });
+
   it('should reject malformed task report payload', () => {
     expect(() =>
       parseTaskReport(
@@ -130,7 +210,13 @@ describe('shared contract helpers', () => {
             stderr: '',
           },
           evidence: { checks: [], changedFiles: [] },
-          commitGate: { passed: true, failures: [] },
+          commitGate: {
+            passed: true,
+            decision: 'pass',
+            failures: [],
+            warnings: [],
+            preExistingFailures: [],
+          },
           commitReady: 'true',
           summary: '执行与最小验证通过',
           generatedAt: '2026-04-20T00:00:00.000Z',

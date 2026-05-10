@@ -1,9 +1,0 @@
-goal: 按照上面的结论，那接下来如何优化一下 hook 的调用呢
-
-template_name: general-task
-risk_level: low
-scope_include: 相关实现路径
-scope_exclude: 无关模块,用户级全局配置
-acceptance_criteria: 目标“按照上面的结论，那接下来如何优化一下 hook 的调用呢
-”已被实现或修复,变更范围与目标一致,输出结果可供后续 verify 使用
-out_of_scope: 重构整仓,新增未请求依赖

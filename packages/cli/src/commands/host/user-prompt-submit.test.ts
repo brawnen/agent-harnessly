@@ -1,4 +1,4 @@
-import { readdir, readFile, rm, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -117,6 +117,7 @@ describe('host user-prompt-submit command', () => {
       action: string;
       taskCreated: boolean;
       plannerAgent?: string;
+      recommendedAgent?: string | null;
       nextStep: string;
       fallbackCreateTaskWithoutPlanner: boolean;
       reason: string;
@@ -128,7 +129,10 @@ describe('host user-prompt-submit command', () => {
 
     expect(payload.action).toBe('delegate_to_planner');
     expect(payload.taskCreated).toBe(false);
+    // 老的复合别名字段保留（向后兼容）
     expect(payload.plannerAgent).toBe('harness-planner');
+    // v3-core 新字段：init 默认启用 requirement → 推荐路由到 requirement
+    expect(payload.recommendedAgent).toBe('harness-requirement');
     expect(payload.nextStep).toBe('delegate_to_planner');
     expect(payload.fallbackCreateTaskWithoutPlanner).toBe(false);
     expect(payload.reason).toBe('matched_change_intent');
@@ -136,6 +140,120 @@ describe('host user-prompt-submit command', () => {
     expect(payload.risk).toBe('low');
     expect(tasks).toEqual([]);
     expect(activeTask).toBe('');
+  });
+
+  it('should fall back to harness-planner when requirement role is disabled', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    // 关闭 requirement role
+    const reqYaml = path.join(workDir, '.harness', 'agents', 'requirement.yaml');
+    const text = await readFile(reqYaml, 'utf8');
+    await writeFile(reqYaml, text.replace('enabled: true', 'enabled: false'), 'utf8');
+
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '修复登录失败的问题' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      plannerAgent?: string;
+      recommendedAgent?: string | null;
+    };
+
+    expect(payload.action).toBe('delegate_to_planner');
+    // requirement 关闭 → recommendedAgent 回退到复合别名
+    expect(payload.recommendedAgent).toBe('harness-planner');
+  });
+
+  it('should route resume_task by current stage (design → harness-designer)', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    // 构造一个 stage=design 的 active task
+    const taskDir = path.join(workDir, '.harness', 'tasks', 'task-1');
+    await mkdir(taskDir, { recursive: true });
+    await writeFile(
+      path.join(taskDir, 'task.json'),
+      JSON.stringify({ taskId: 'task-1', goal: '设计阶段' }),
+      'utf8',
+    );
+    await writeFile(
+      path.join(taskDir, 'state.json'),
+      JSON.stringify({
+        taskId: 'task-1',
+        status: 'ready',
+        currentStage: 'design',
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z',
+        completedStages: ['spec'],
+        retryCount: 0,
+      }),
+      'utf8',
+    );
+    await writeFile(path.join(workDir, '.harness', 'active-task.txt'), 'task-1', 'utf8');
+
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '继续当前任务' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      activeStage: string;
+      recommendedAgent: string | null;
+    };
+
+    expect(payload.action).toBe('resume_task');
+    expect(payload.activeStage).toBe('design');
+    expect(payload.recommendedAgent).toBe('harness-designer');
+  });
+
+  it('should return null recommendedAgent for resume_task at execute stage', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    const taskDir = path.join(workDir, '.harness', 'tasks', 'task-1');
+    await mkdir(taskDir, { recursive: true });
+    await writeFile(
+      path.join(taskDir, 'task.json'),
+      JSON.stringify({ taskId: 'task-1', goal: '执行阶段' }),
+      'utf8',
+    );
+    await writeFile(
+      path.join(taskDir, 'state.json'),
+      JSON.stringify({
+        taskId: 'task-1',
+        status: 'executing',
+        currentStage: 'execute',
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z',
+        completedStages: ['spec', 'design'],
+        retryCount: 0,
+      }),
+      'utf8',
+    );
+    await writeFile(path.join(workDir, '.harness', 'active-task.txt'), 'task-1', 'utf8');
+
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '继续当前任务' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      activeStage: string;
+      recommendedAgent: string | null;
+    };
+
+    expect(payload.action).toBe('resume_task');
+    expect(payload.activeStage).toBe('execute');
+    // execute 阶段由主 agent 担任 → 不推荐 sub-agent
+    expect(payload.recommendedAgent).toBeNull();
   });
 
   it('should resume the active task for continuation prompts', async () => {
@@ -201,5 +319,80 @@ describe('host user-prompt-submit command', () => {
     expect(payload.planPath).toContain(payload.taskId);
     expect(tasks).toEqual([payload.taskId]);
     expect(activeTask.trim()).toBe(payload.taskId);
+  });
+
+  it('should auto-fallback to create_task after a failed planner delegation', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    // 第一次：正常 delegate_to_planner
+    const output1 = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '修复登录页样式' }, []),
+    );
+    const payload1 = JSON.parse(output1) as {
+      action: string;
+      taskCreated: boolean;
+      plannerAgent?: string;
+      nextStep: string;
+      autoFallback: boolean;
+    };
+
+    expect(payload1.action).toBe('delegate_to_planner');
+    expect(payload1.taskCreated).toBe(false);
+    expect(payload1.plannerAgent).toBe('harness-planner');
+    expect(payload1.autoFallback).toBe(false);
+
+    // 第二次：Planner 未生效 → 自动降级为 create_task
+    const output2 = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '修复登录页样式' }, []),
+    );
+    const payload2 = JSON.parse(output2) as {
+      action: string;
+      taskCreated: boolean;
+      taskId: string;
+      contractPath: string;
+      planPath: string;
+      autoFallback: boolean;
+    };
+
+    expect(payload2.action).toBe('create_task');
+    expect(payload2.taskCreated).toBe(true);
+    expect(payload2.autoFallback).toBe(true);
+
+    // 验证降级后 pending file 已清理
+    const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
+    expect(tasks).toEqual([payload2.taskId]);
+  });
+
+  it('should not fallback for resume prompts even after a failed delegation', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    // 第一次：delegate_to_planner
+    await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '修复登录页样式' }, []),
+    );
+
+    // 设置 active task 模拟 Planner 在后台创建了 task
+    await writeFile(path.join(workDir, '.harness', 'active-task.txt'), 'task-1', 'utf8');
+
+    // 第二次：resume 提示词 → 不应降级
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '继续修改' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      taskCreated: boolean;
+      nextStep: string;
+    };
+
+    expect(payload.action).toBe('resume_task');
+    expect(payload.taskCreated).toBe(false);
   });
 });

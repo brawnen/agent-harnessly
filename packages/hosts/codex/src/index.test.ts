@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { AgentManifest } from '@harnessly/shared';
 import { createHostManifest } from '@harnessly/host-shared';
 
 import {
@@ -9,6 +10,20 @@ import {
   renderCodexManagedFiles,
   renderCodexPlannerAgent,
 } from './index';
+
+function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManifest> = {}): AgentManifest {
+  return {
+    role,
+    displayName: `Harness ${role}`,
+    description: `${role} agent`,
+    stage: 'review',
+    enabled: true,
+    models: { codex: 'gpt-5.4' },
+    toolWhitelist: ['Read', 'Bash'],
+    prompt: `# ${role}\n你是 ${role}。`,
+    ...overrides,
+  };
+}
 
 describe('codex host renderer', () => {
   it('should render config.toml with hooks path', () => {
@@ -95,7 +110,42 @@ describe('codex host renderer', () => {
     });
 
     expect(files['.codex/agents/harness-planner.toml']).toContain('model = "gpt-5.5-mini"');
-    expect(files['.codex/agents/harness-planner.toml']).toContain('不要求使用宿主 plan mode');
+    expect(files['.codex/agents/harness-planner.toml']).toContain('默认走结构化产出路径');
+    expect(files['.codex/agents/harness-planner.toml']).toContain('不进入 plan mode');
     expect(files['.codex/agents/harness-evaluator.toml']).toContain('model = "gpt-5.5"');
+  });
+
+  it('should incrementally render 5-role sub-agents when agentManifests are provided', () => {
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
+      agentManifests: [
+        makeManifest('requirement', { stage: 'spec' }),
+        makeManifest('designer', { stage: 'design' }),
+        makeManifest('developer', { stage: 'execute', enabled: false }),
+        makeManifest('reviewer', { stage: 'review' }),
+        makeManifest('tester', { stage: 'test' }),
+      ],
+    });
+
+    // 老复合别名保留
+    expect(files['.codex/agents/harness-planner.toml']).toBeDefined();
+    expect(files['.codex/agents/harness-evaluator.toml']).toBeDefined();
+
+    // 4 个 enabled=true 角色被渲染
+    expect(files['.codex/agents/harness-requirement.toml']).toContain('name = "harness-requirement"');
+    expect(files['.codex/agents/harness-designer.toml']).toContain('name = "harness-designer"');
+    expect(files['.codex/agents/harness-reviewer.toml']).toContain('name = "harness-reviewer"');
+    expect(files['.codex/agents/harness-tester.toml']).toContain('name = "harness-tester"');
+
+    // developer.enabled=false → 不渲染
+    expect(files['.codex/agents/harness-developer.toml']).toBeUndefined();
+  });
+
+  it('should preserve old 2-role behavior when agentManifests are absent', () => {
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'));
+
+    expect(files['.codex/agents/harness-requirement.toml']).toBeUndefined();
+    expect(files['.codex/agents/harness-reviewer.toml']).toBeUndefined();
+    expect(files['.codex/agents/harness-planner.toml']).toBeDefined();
+    expect(files['.codex/agents/harness-evaluator.toml']).toBeDefined();
   });
 });

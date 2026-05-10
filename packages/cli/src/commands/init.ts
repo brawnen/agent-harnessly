@@ -5,6 +5,7 @@ import {
   detectProjectType,
   ensureHarnessDirectories,
   renderGlobalRulesTemplate,
+  writeDefaultAgentManifests,
   writeFileIfChanged,
   writeHarnessConfig,
 } from '@harnessly/core';
@@ -30,6 +31,12 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     force,
   );
 
+  // 写入 5 角色 sub-agent 默认 manifest（v3-core SPEC §4）
+  const agentResults = await writeDefaultAgentManifests(workDir, force);
+  const agentSummary = agentResults
+    .map((r) => `${r.role}=${r.manifestStatus}/${r.promptStatus}`)
+    .join(', ');
+
   await ensureHostManifest(workDir, config.defaultHost);
   const installedPaths = config.installRepoLocalShells
     ? await installHostShells(workDir, config.defaultHost)
@@ -42,6 +49,7 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     `- project_type: ${projectType}`,
     `- config: ${configStatus}`,
     `- global_rules: ${globalRulesStatus}`,
+    `- agents: ${agentSummary}`,
     `- host: ${config.defaultHost}`,
     `- installed_shells: ${installedPaths.length > 0 ? installedPaths.join(', ') : 'none'}`,
   ]);

@@ -9,6 +9,7 @@ import {
   parseContract,
   type Contract,
   type HarnessConfig,
+  type StageMarker,
   type TaskContext,
   type TaskState,
   type TaskStatus,
@@ -17,6 +18,7 @@ import {
   serializeTaskReport,
 } from '@harnessly/shared';
 
+import { appendFeedbackEntry, buildFeedbackEntry } from './feedback-pool';
 import { loadHarnessConfig } from './scaffold';
 
 function createInitialTaskState(taskId: string): TaskState {
@@ -51,7 +53,7 @@ function isMissingFileError(error: unknown): boolean {
   );
 }
 
-function touchState(state: TaskState, status: TaskStatus, stage: string): TaskState {
+function touchState(state: TaskState, status: TaskStatus, stage: StageMarker): TaskState {
   return {
     ...state,
     status,
@@ -144,14 +146,14 @@ export class TaskManager {
 
   async saveContract(ctx: TaskContext, contract: Contract): Promise<void> {
     ctx.contract = contract;
-    ctx.state = touchState(ctx.state, 'planning', 'contract');
+    ctx.state = touchState(ctx.state, 'planning', 'spec');
     await writeFile(this.getContractFile(ctx.taskDir), serializeContract(contract), 'utf8');
     await this.saveState(ctx);
   }
 
   async savePlan(ctx: TaskContext, plan: string): Promise<void> {
     ctx.plan = plan;
-    ctx.state = touchState(ctx.state, 'ready', 'plan');
+    ctx.state = touchState(ctx.state, 'ready', 'design');
     await writeFile(this.getPlanFile(ctx.taskDir), plan, 'utf8');
     await this.saveState(ctx);
   }
@@ -163,9 +165,21 @@ export class TaskManager {
   }
 
   async saveReport(ctx: TaskContext, report: TaskReport): Promise<void> {
-    ctx.state = touchState(ctx.state, report.commitReady ? 'passed' : 'failed', 'report');
+    ctx.state = touchState(ctx.state, report.commitReady ? 'passed' : 'failed', 'commit_gate');
     await writeFile(this.getReportFile(ctx.taskDir), serializeTaskReport(report), 'utf8');
     await this.saveState(ctx);
+
+    // commit_gate 通过即把任务沉淀进 feedback-pool，给后续任务做 prompt 注入。
+    // 失败/警告不进 pool（避免污染未来 prompt 的"可参考经验"语义）；
+    // 写入异常不抛——pool 是 best-effort 的辅助资产，不影响 task 主流程。
+    if (report.commitGate.decision === 'pass') {
+      try {
+        const entry = buildFeedbackEntry(ctx, report);
+        await appendFeedbackEntry(ctx.workDir, entry);
+      } catch {
+        // 静默：feedback pool 写入失败不影响 task 主流程
+      }
+    }
   }
 
   async saveFeedback(ctx: TaskContext, feedback: string): Promise<void> {
@@ -182,7 +196,7 @@ export class TaskManager {
     }
   }
 
-  async markFailure(ctx: TaskContext, stage: string, reason: string): Promise<void> {
+  async markFailure(ctx: TaskContext, stage: StageMarker, reason: string): Promise<void> {
     ctx.state = {
       ...touchState(ctx.state, 'failed', stage),
       lastFailureReason: reason,

@@ -88,7 +88,7 @@ describe('status and list commands', () => {
     expect(statusOutput).toContain('report_ready: false');
 
     expect(listOutput).toContain(`${ctx.taskId} [active]`);
-    expect(listOutput).toContain('stage=plan');
+    expect(listOutput).toContain('stage=design');
     expect(listOutput).toContain('retry=0');
   });
 });

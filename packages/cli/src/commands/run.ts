@@ -94,7 +94,7 @@ export async function runTask(
     adapterKind,
     adapterCommand,
     dryRun: false,
-    resumeFrom: 'plan',
+    resumeFrom: 'design',
   });
 
   if (!result.dryRun && result.report) {

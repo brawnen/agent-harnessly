@@ -1,0 +1,7 @@
+/.obsidian/
+/node_modules/
+**/node_modules/
+.idea/
+/.harness/active-task.txt
+/.harness/events.jsonl
+/.harness/tasks/
