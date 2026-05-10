@@ -172,9 +172,9 @@ function buildCompletionDecision(result) {
   };
 }
 
-const SESSION_START_COMMAND = "\"/opt/homebrew/Cellar/node/25.9.0_2/bin/node\" \"/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js\" host session-start";
-const USER_PROMPT_COMMAND = "\"/opt/homebrew/Cellar/node/25.9.0_2/bin/node\" \"/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js\" host user-prompt-submit";
-const COMPLETION_GATE_COMMAND = "\"/opt/homebrew/Cellar/node/25.9.0_2/bin/node\" \"/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js\" host completion-gate";
+const SESSION_START_COMMAND = "\"/opt/homebrew/Cellar/node/25.9.0_3/bin/node\" \"/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js\" host session-start";
+const USER_PROMPT_COMMAND = "\"/opt/homebrew/Cellar/node/25.9.0_3/bin/node\" \"/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js\" host user-prompt-submit";
+const COMPLETION_GATE_COMMAND = "\"/opt/homebrew/Cellar/node/25.9.0_3/bin/node\" \"/Users/lijianfeng/code/pp/agent-harnessly/packages/cli/dist/index.js\" host completion-gate";
 
 module.exports = {
   buildCodexHookOutput,
