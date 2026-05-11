@@ -6,3 +6,5 @@
 /.harness/events.jsonl
 /.harness/pending-planner-delegation.json
 /.harness/tasks/
+/.harness/feedback-pool.jsonl
+/.harness/intake-last.json
