@@ -1,9 +1,14 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
   feedbackEntrySchema,
   type FeedbackEntry,
+  type Finding,
+  type FindingCategory,
+  type FindingGroup,
+  type PromotableAs,
+  type PromoteAction,
   type TaskReport,
   type TemplateName,
   type TaskContext,
@@ -222,4 +227,187 @@ export async function promoteFeedbackEntry(
   );
 
   return entry;
+}
+
+// ===== 反馈晋升 (§15) =====
+
+function trigramSimilarity(a: string, b: string): number {
+  const trigrams = (s: string): Set<string> => {
+    const result = new Set<string>();
+    const lower = s.toLowerCase();
+    for (let i = 0; i < lower.length - 2; i += 1) {
+      result.add(lower.slice(i, i + 3));
+    }
+    return result;
+  };
+
+  const ta = trigrams(a);
+  const tb = trigrams(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+
+  const intersection = new Set([...ta].filter((t) => tb.has(t)));
+  const union = new Set([...ta, ...tb]);
+  return intersection.size / union.size;
+}
+
+/**
+ * 按 category + summary trigram 相似度（阈值 0.6）聚类。
+ * 对每组合并成员，计算建议晋升目标（所有成员 promotable_as 的交集）。
+ */
+export function groupFindingsBySimilarity(
+  findings: readonly Finding[],
+  similarityThreshold = 0.6,
+): FindingGroup[] {
+  const groups: FindingGroup[] = [];
+  const assigned = new Set<string>();
+
+  for (const finding of findings) {
+    if (assigned.has(finding.id)) continue;
+
+    const group: Finding[] = [finding];
+    assigned.add(finding.id);
+
+    for (const other of findings) {
+      if (assigned.has(other.id)) continue;
+      if (other.category !== finding.category) continue;
+      if (trigramSimilarity(finding.summary, other.summary) >= similarityThreshold) {
+        group.push(other);
+        assigned.add(other.id);
+      }
+    }
+
+    // 计算建议目标：取所有成员的 promotable_as 交集
+    let suggestedTargets: PromotableAs[] = group[0]!.promotable_as;
+    for (let i = 1; i < group.length; i += 1) {
+      suggestedTargets = suggestedTargets.filter(
+        (target) => group[i]!.promotable_as.includes(target),
+      );
+    }
+
+    groups.push({
+      category: finding.category,
+      summary: finding.summary,
+      count: group.length,
+      findings: group,
+      suggestedTargets,
+    });
+  }
+
+  return groups.sort((a, b) => b.count - a.count);
+}
+
+/**
+ * 把晋升结果应用到仓库中：
+ * - lint/structure_rule → 追加到 structure-rules.yaml
+ * - review_prompt → 追加到 review-agents.yaml 对应 agent 的 prompt
+ * - skill_fix_hint → 更新 skill 的 fix_hint_template
+ * - failed_test → 生成测试文件
+ */
+export async function applyPromotion(
+  workDir: string,
+  action: PromoteAction,
+): Promise<string> {
+  const paths = getHarnessPaths(workDir);
+  const detail = action.group.findings.map((f) => f.summary).join('; ');
+
+  switch (action.target) {
+    case 'lint':
+    case 'structure_rule': {
+      const rulesPath = paths.structureRulesFile;
+      let existing = '';
+      try { existing = await readFile(rulesPath, 'utf8'); } catch { /* 不存在则创建 */ }
+      const entry = [
+        '',
+        `# 从 feedback-pool 晋升（${action.group.category}, 出现 ${action.group.count} 次）`,
+        `unique_implementations:`,
+        `  - pattern: "**/*.ts"`,
+        `    rule: "${action.group.summary}"`,
+        `    fix_hint: "${action.group.findings[0]?.fix_hint ?? '检查并修复'}"`,
+        '',
+      ].join('\n');
+      await writeFile(rulesPath, `${existing}${entry}`, 'utf8');
+      return `已追加 structure-rule（${action.group.category}, ${action.group.count} 次）`;
+    }
+
+    case 'review_prompt': {
+      const agentsPath = paths.reviewAgentsFile;
+      let existing = '';
+      try { existing = await readFile(agentsPath, 'utf8'); } catch { /* 不存在 */ }
+      const entry = [
+        '',
+        `  - name: auto-promoted-${action.group.category}`,
+        `    triggers: [pre_merge]`,
+        `    model: gpt-5.5`,
+        `    blocking_severity: P1`,
+        `    prompt: |`,
+        `      检查：${action.group.summary}（从 feedback-pool 自动晋升，出现 ${action.group.count} 次）。`,
+        '',
+      ].join('\n');
+      await writeFile(agentsPath, `${existing}${entry}`, 'utf8');
+      return `已追加 review-agent（${action.group.category}, ${action.group.count} 次）`;
+    }
+
+    case 'skill_fix_hint': {
+      const skillDir = paths.skillsDir;
+      const hintContent = [
+        `# 从 feedback-pool 晋升的 fix_hint（${action.group.category}）`,
+        `# 出现 ${action.group.count} 次: ${detail}`,
+        `fix_hint: "${action.group.findings[0]?.fix_hint ?? '检查并修复'}"`,
+        '',
+      ].join('\n');
+      const hintPath = path.join(skillDir, 'promoted-fix-hints.yaml');
+      let existing = '';
+      try { existing = await readFile(hintPath, 'utf8'); } catch { /* 不存在 */ }
+      await writeFile(hintPath, `${existing}${hintContent}`, 'utf8');
+      return `已追加 skill fix_hint（${action.group.category}, ${action.group.count} 次）`;
+    }
+
+    case 'failed_test': {
+      const testDir = path.join(workDir, 'packages', 'core', 'src');
+      const testName = `auto-promoted-${action.group.category}-${action.group.count}`;
+      const testContent = [
+        `// 从 feedback-pool 自动晋升（${action.group.category}, 出现 ${action.group.count} 次）`,
+        `import { describe, it, expect } from 'vitest';`,
+        '',
+        `describe('auto-promoted: ${action.group.summary}', () => {`,
+        `  it.fails('TODO: 实现修复使此测试通过', () => {`,
+        `    // ${action.group.findings.map((f) => f.fix_hint).join('; ')}`,
+        `    expect(true).toBe(false);`,
+        `  });`,
+        `});`,
+        '',
+      ].join('\n');
+      await writeFile(path.join(testDir, `${testName}.test.ts`), testContent, 'utf8');
+      return `已生成失败测试（${action.group.category}, ${action.group.count} 次）：${testName}.test.ts`;
+    }
+
+    case 'dismiss':
+      return `已 dismiss（${action.group.category}, ${action.group.count} 次）`;
+
+    default:
+      return `未知晋升目标：${action.target}`;
+  }
+}
+
+/**
+ * 将已处理的 finding 从 pool 移到 feedback-history.md。
+ */
+export async function moveFindingsToHistory(
+  workDir: string,
+  action: PromoteAction,
+): Promise<void> {
+  const historyPath = getFeedbackHistoryPath(workDir);
+  const entry = [
+    `## ${new Date().toISOString()} auto-promotion`,
+    '',
+    `- target: ${action.target}`,
+    `- category: ${action.group.category}`,
+    `- summary: ${action.group.summary}`,
+    `- count: ${action.group.count}`,
+    `- finding_ids: ${action.group.findings.map((f) => f.id).join(', ')}`,
+    '',
+  ].join('\n');
+
+  await mkdir(path.dirname(historyPath), { recursive: true });
+  await appendFile(historyPath, `${entry}\n`, 'utf8');
 }

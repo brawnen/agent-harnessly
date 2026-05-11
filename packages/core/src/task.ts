@@ -266,6 +266,27 @@ export class TaskManager {
     await writeFile(this.getFeedbackFile(ctx.taskDir), feedback, 'utf8');
   }
 
+  /**
+   * 向 commit-summary.md 追加一个小节。用于声明式晋升等场景记录。
+   * best-effort：写入失败不抛。
+   */
+  async appendCommitSummarySection(
+    ctx: TaskContext,
+    heading: string,
+    content: string,
+  ): Promise<void> {
+    const filePath = path.join(ctx.taskDir, 'commit-summary.md');
+    try {
+      const existing = await readFile(filePath, 'utf8').catch((error) =>
+        isMissingFileError(error) ? '' : Promise.reject(error),
+      );
+      const section = `${heading}\n${content}\n`;
+      await writeFile(filePath, `${existing}${existing ? '\n' : ''}${section}\n`, 'utf8');
+    } catch {
+      // best-effort
+    }
+  }
+
   async clearFeedback(ctx: TaskContext): Promise<void> {
     ctx.feedback = undefined;
     try {

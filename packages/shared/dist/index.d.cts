@@ -88,6 +88,92 @@ interface AssetPromotion {
     files: string[];
     mode: 'new_topic' | 'append' | 'replace';
 }
+/**
+ * v3-core §4.1.16 _harness-meta.json source_tasks 条目。
+ * 每次晋升追加一条，不得删除已有条目。
+ */
+interface SourceTaskEntry {
+    task_id: string;
+    goal: string;
+    promoted_files: string[];
+    promoted_at: string;
+    promotion_mode: 'new_topic' | 'append' | 'replace';
+}
+/** v3-core §4.1.16 _harness-meta.json 文件结构 */
+interface HarnessMetaFile {
+    topic: string;
+    created_at: string;
+    harness_version: string;
+    source_tasks: SourceTaskEntry[];
+}
+/** archive list 输出 */
+interface ArchiveTopicSummary {
+    topic: string;
+    fileCount: number;
+    sourceTaskCount: number;
+    lastPromotedAt: string;
+}
+/** archive show 输出 */
+interface ArchiveTopicDetail {
+    topic: string;
+    readme: string;
+    files: string[];
+    sourceTasks: SourceTaskEntry[];
+}
+type FindingCategory = 'reliability' | 'scalability' | 'security' | 'style' | 'other';
+type PromotableAs = 'lint' | 'structure_rule' | 'failed_test' | 'review_prompt' | 'skill_fix_hint';
+interface FindingExample {
+    task: string;
+    file: string;
+    line?: number;
+}
+interface Finding {
+    id: string;
+    kind: 'recurrent_pattern';
+    category: FindingCategory;
+    summary: string;
+    examples: FindingExample[];
+    fix_hint: string;
+    promotable_as: PromotableAs[];
+}
+interface FindingGroup {
+    category: FindingCategory;
+    summary: string;
+    count: number;
+    findings: Finding[];
+    suggestedTargets: PromotableAs[];
+}
+interface PromoteAction {
+    group: FindingGroup;
+    target: PromotableAs | 'dismiss';
+}
+interface ReviewAgentConfig {
+    name: string;
+    triggers: ('pre_push' | 'pre_merge' | 'on_demand')[];
+    model: string;
+    prompt: string;
+    blocking_severity: 'P0' | 'P1' | 'P2';
+}
+interface ReviewAgentsConfig {
+    review_agents: ReviewAgentConfig[];
+}
+interface ResidentReviewFinding {
+    id: string;
+    severity: 'P0' | 'P1' | 'P2';
+    description: string;
+    file?: string;
+    line?: number;
+    fix_hint: string;
+    recurrent_pattern: boolean;
+    agent_name: string;
+    trigger: string;
+}
+interface ResidentReviewResult {
+    trigger: string;
+    findings: ResidentReviewFinding[];
+    hadBlockingFinding: boolean;
+    agentsSpawned: string[];
+}
 interface ContractGateResult {
     passed: boolean;
     failures: string[];
@@ -362,6 +448,8 @@ declare const taskOwnerRoleSchema: z.ZodEnum<["pm", "requirement", "designer", "
 declare const harnessConfigSchema: z.ZodType<HarnessConfig>;
 declare const acceptanceCriterionSchema: z.ZodType<AcceptanceCriterion>;
 declare const assetPromotionSchema: z.ZodType<AssetPromotion>;
+declare const sourceTaskEntrySchema: z.ZodType<SourceTaskEntry>;
+declare const harnessMetaFileSchema: z.ZodType<HarnessMetaFile>;
 declare const contractSchema: z.ZodType<Contract>;
 declare const adapterOutputSchema: z.ZodType<AdapterOutput>;
 declare const evidenceCheckResultSchema: z.ZodType<EvidenceCheckResult>;
@@ -408,4 +496,4 @@ declare function validateTemplateDraft(template: TemplateDraft): TemplateDraft;
 declare function serializeTemplateDraft(template: TemplateDraft): string;
 declare function parseTemplateDraft(text: string): TemplateDraft;
 
-export { type AcceptanceCriterion, type AcceptanceVerifier, type AdapterInput, type AdapterKind, type AdapterOutput, type AgentManifest, type AgentRole, type AssetPromotion, type BaselineCheckDiff, type BaselineDiff, type CheckStatus, type CommitDecision, type CommitGateResult, type Contract, type ContractGateResult, type EstimatedComplexity, type EvidenceBaseline, type EvidenceCheckResult, type EvidenceResult, type EvidenceSnapshot, type FeedbackEntry, type FlatYamlValue, HARNESSLY_VERSION, type HarnessConfig, type HostLifecycleCommands, type HostManifest, type HostName, type PackageInfo, type ProjectType, type RequiredCheck, type RiskLevel, SHARED_PACKAGE_NAME, type Skill, type StageMarker, type TaskContext, type TaskOwnerRole, type TaskReport, type TaskReportArtifacts, type TaskReportMetrics, type TaskState, type TaskStatus, type TaskSummary, type TemplateDraft, type TemplateName, type WorkflowStage, acceptanceCriterionSchema, acceptanceVerifierSchema, adapterKindSchema, adapterOutputSchema, agentManifestSchema, agentRoleSchema, assetPromotionSchema, baselineDiffSchema, checkStatusSchema, commitDecisionSchema, commitGateResultSchema, contractSchema, estimatedComplexitySchema, evidenceBaselineSchema, evidenceCheckResultSchema, evidenceResultSchema, evidenceSnapshotSchema, feedbackEntrySchema, harnessConfigSchema, hostNameSchema, packageInfo, parseAgentManifestYaml, parseBoolean, parseContract, parseFlatYaml, parseHarnessConfig, parseStringList, parseTaskReport, parseTemplateDraft, projectTypeSchema, requiredCheckSchema, riskLevelSchema, serializeAgentManifestYaml, serializeContract, serializeFlatYaml, serializeHarnessConfig, serializeTaskReport, serializeTemplateDraft, skillSchema, stageMarkerSchema, taskOwnerRoleSchema, taskReportArtifactsSchema, taskReportMetricsSchema, taskReportSchema, taskStatusSchema, templateDraftSchema, templateNameSchema, validateContract, validateDesignMarkdown, validateHarnessConfig, validateRequirementMarkdown, validateTaskReport, validateTemplateDraft, workflowStageSchema };
+export { type AcceptanceCriterion, type AcceptanceVerifier, type AdapterInput, type AdapterKind, type AdapterOutput, type AgentManifest, type AgentRole, type ArchiveTopicDetail, type ArchiveTopicSummary, type AssetPromotion, type BaselineCheckDiff, type BaselineDiff, type CheckStatus, type CommitDecision, type CommitGateResult, type Contract, type ContractGateResult, type EstimatedComplexity, type EvidenceBaseline, type EvidenceCheckResult, type EvidenceResult, type EvidenceSnapshot, type FeedbackEntry, type Finding, type FindingCategory, type FindingExample, type FindingGroup, type FlatYamlValue, HARNESSLY_VERSION, type HarnessConfig, type HarnessMetaFile, type HostLifecycleCommands, type HostManifest, type HostName, type PackageInfo, type ProjectType, type PromotableAs, type PromoteAction, type RequiredCheck, type ResidentReviewFinding, type ResidentReviewResult, type ReviewAgentConfig, type ReviewAgentsConfig, type RiskLevel, SHARED_PACKAGE_NAME, type Skill, type SourceTaskEntry, type StageMarker, type TaskContext, type TaskOwnerRole, type TaskReport, type TaskReportArtifacts, type TaskReportMetrics, type TaskState, type TaskStatus, type TaskSummary, type TemplateDraft, type TemplateName, type WorkflowStage, acceptanceCriterionSchema, acceptanceVerifierSchema, adapterKindSchema, adapterOutputSchema, agentManifestSchema, agentRoleSchema, assetPromotionSchema, baselineDiffSchema, checkStatusSchema, commitDecisionSchema, commitGateResultSchema, contractSchema, estimatedComplexitySchema, evidenceBaselineSchema, evidenceCheckResultSchema, evidenceResultSchema, evidenceSnapshotSchema, feedbackEntrySchema, harnessConfigSchema, harnessMetaFileSchema, hostNameSchema, packageInfo, parseAgentManifestYaml, parseBoolean, parseContract, parseFlatYaml, parseHarnessConfig, parseStringList, parseTaskReport, parseTemplateDraft, projectTypeSchema, requiredCheckSchema, riskLevelSchema, serializeAgentManifestYaml, serializeContract, serializeFlatYaml, serializeHarnessConfig, serializeTaskReport, serializeTemplateDraft, skillSchema, sourceTaskEntrySchema, stageMarkerSchema, taskOwnerRoleSchema, taskReportArtifactsSchema, taskReportMetricsSchema, taskReportSchema, taskStatusSchema, templateDraftSchema, templateNameSchema, validateContract, validateDesignMarkdown, validateHarnessConfig, validateRequirementMarkdown, validateTaskReport, validateTemplateDraft, workflowStageSchema };

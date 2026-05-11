@@ -22,6 +22,17 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/pre_tool_use.js\""
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",

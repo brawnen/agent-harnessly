@@ -4,7 +4,6 @@ import {
   createDefaultHarnessConfig,
   detectProjectType,
   ensureHarnessDirectories,
-  renderGlobalRulesTemplate,
   renderReviewAgentsTemplate,
   renderStructureRulesTemplate,
   writeDefaultSkillManifests,
@@ -14,6 +13,7 @@ import {
 } from '@harnessly/core';
 import type { HostName } from '@harnessly/shared';
 
+import { installGitHooks } from '../utils/git-hooks';
 import { installHostShells, ensureHostManifest } from '../utils/hosts';
 import { printLines } from '../utils/output';
 
@@ -32,11 +32,6 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
   const config = createDefaultHarnessConfig(projectType, hosts);
 
   const configStatus = await writeHarnessConfig(workDir, config, force);
-  const globalRulesStatus = await writeFileIfChanged(
-    paths.globalRulesFile,
-    renderGlobalRulesTemplate(),
-    force,
-  );
   const structureRulesStatus = await writeFileIfChanged(
     paths.structureRulesFile,
     renderStructureRulesTemplate(),
@@ -67,6 +62,15 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
   for (const host of hosts) {
     await ensureHostManifest(workDir, host);
   }
+
+  // 安装 git hooks（常驻 review agent pre_push / pre_merge 触发）
+  let gitHookPaths: string[] = [];
+  try {
+    gitHookPaths = await installGitHooks(workDir, hosts);
+  } catch {
+    // git hooks 安装失败不阻断 init
+  }
+
   const installedPaths = config.installRepoLocalShells
     ? await installHostShells(workDir)
     : [];
@@ -77,7 +81,6 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     'Harnessly 初始化完成',
     `- project_type: ${projectType}`,
     `- config: ${configStatus}`,
-    `- global_rules: ${globalRulesStatus}`,
     `- structure_rules: ${structureRulesStatus}`,
     `- review_agents: ${reviewAgentsStatus}`,
     `- skills: ${skillSummary}`,
@@ -85,5 +88,6 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     `- hosts: ${hosts.join(', ')}`,
     `- default_host: ${config.defaultHost}`,
     `- installed_shells: ${installedPaths.length > 0 ? installedPaths.join(', ') : 'none'}`,
+    `- git_hooks: ${gitHookPaths.length > 0 ? gitHookPaths.join(', ') : 'none (git hooks 安装失败或跳过)'}`,
   ]);
 }

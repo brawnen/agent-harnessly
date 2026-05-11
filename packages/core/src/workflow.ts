@@ -29,6 +29,7 @@ import { createLLMClientFromEnv } from './llm';
 import { generatePlan } from './plan';
 import { assemblePrompt } from './prompt';
 import { createTaskReport } from './report';
+import { promoteTaskArtifacts } from './archive';
 import { renderResidentReview } from './resident-review';
 import { runReviewStage } from './review';
 import { runStructureCheck } from './structure-check';
@@ -491,6 +492,34 @@ export class WorkflowEngine {
         await saveEvidenceBaseline(ctx.workDir, buildEvidenceBaseline(evidence));
       } catch {
         // baseline 写入失败不影响主流程：下一次任务退化为不带 baseline 的旧行为
+      }
+
+      // v3-core §22.2.1 声明式晋升：commit_gate pass 时自动将指定工件晋升到 docs/architecture/
+      if (ctx.contract?.assetPromotion?.promote && ctx.contract.assetPromotion.topic) {
+        const ap = ctx.contract.assetPromotion;
+        const topic = ap.topic!; // guarded by if check above
+        try {
+          await promoteTaskArtifacts(ctx.workDir, ctx.taskId, {
+            topic,
+            files: ap.files,
+            mode: ap.mode,
+          });
+          // 在 commit-summary 中记录晋升
+          await this.manager.appendCommitSummarySection(
+            ctx,
+            '## Promoted Assets',
+            [
+              `- topic: ${topic}`,
+              `- files: ${ap.files.join(', ')}`,
+              `- mode: ${ap.mode}`,
+              `- promoted_at: ${new Date().toISOString()}`,
+            ].join('\n'),
+          );
+        } catch (error) {
+          // 晋升失败不阻断 commit_gate 主流程，但记录告警
+          const message = error instanceof Error ? error.message : String(error);
+          await this.manager.appendCommitSummarySection(ctx, '## Promoted Assets', `- 晋升失败：${message}`);
+        }
       }
     } else {
       const failedChecks = report.evidence.checks

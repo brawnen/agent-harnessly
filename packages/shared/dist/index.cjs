@@ -41,6 +41,7 @@ __export(index_exports, {
   evidenceSnapshotSchema: () => evidenceSnapshotSchema,
   feedbackEntrySchema: () => feedbackEntrySchema,
   harnessConfigSchema: () => harnessConfigSchema,
+  harnessMetaFileSchema: () => harnessMetaFileSchema,
   hostNameSchema: () => hostNameSchema,
   packageInfo: () => packageInfo,
   parseAgentManifestYaml: () => parseAgentManifestYaml,
@@ -61,6 +62,7 @@ __export(index_exports, {
   serializeTaskReport: () => serializeTaskReport,
   serializeTemplateDraft: () => serializeTemplateDraft,
   skillSchema: () => skillSchema,
+  sourceTaskEntrySchema: () => sourceTaskEntrySchema,
   stageMarkerSchema: () => stageMarkerSchema,
   taskOwnerRoleSchema: () => taskOwnerRoleSchema,
   taskReportArtifactsSchema: () => taskReportArtifactsSchema,
@@ -148,6 +150,19 @@ var assetPromotionSchema = import_zod.z.object({
   topic: import_zod.z.string().min(1).optional(),
   files: import_zod.z.array(import_zod.z.string().min(1)),
   mode: import_zod.z.enum(["new_topic", "append", "replace"])
+});
+var sourceTaskEntrySchema = import_zod.z.object({
+  task_id: import_zod.z.string().min(1),
+  goal: import_zod.z.string().min(1),
+  promoted_files: import_zod.z.array(import_zod.z.string().min(1)),
+  promoted_at: import_zod.z.string().min(1),
+  promotion_mode: import_zod.z.enum(["new_topic", "append", "replace"])
+});
+var harnessMetaFileSchema = import_zod.z.object({
+  topic: import_zod.z.string().min(1),
+  created_at: import_zod.z.string().min(1),
+  harness_version: import_zod.z.string().min(1),
+  source_tasks: import_zod.z.array(sourceTaskEntrySchema)
 });
 var contractSchema = import_zod.z.object({
   version: import_zod.z.literal("2.0"),
@@ -751,6 +766,7 @@ function parseTemplateDraft(text) {
   evidenceSnapshotSchema,
   feedbackEntrySchema,
   harnessConfigSchema,
+  harnessMetaFileSchema,
   hostNameSchema,
   packageInfo,
   parseAgentManifestYaml,
@@ -771,6 +787,7 @@ function parseTemplateDraft(text) {
   serializeTaskReport,
   serializeTemplateDraft,
   skillSchema,
+  sourceTaskEntrySchema,
   stageMarkerSchema,
   taskOwnerRoleSchema,
   taskReportArtifactsSchema,

@@ -2,9 +2,11 @@ import { runArchive } from './commands/archive';
 import { runEvidenceBaseline } from './commands/evidence-baseline';
 import { runFeedback } from './commands/feedback';
 import { runInit } from './commands/init';
-import { runHostCompletionGate } from './commands/host/completion-gate';
 import { runHostAgentEvent } from './commands/host/agent-event';
+import { runHostArtifactGuard } from './commands/host/artifact-guard';
+import { runHostCompletionGate } from './commands/host/completion-gate';
 import { runHostInstall } from './commands/host/install';
+import { runHostResidentReview } from './commands/host/resident-review';
 import { runHostSessionStart } from './commands/host/session-start';
 import { runHostStatus } from './commands/host/status';
 import { runHostSync } from './commands/host/sync';
@@ -30,8 +32,10 @@ function printUsage(): void {
       '  harnessly run --resume <task-id>',
       '  harnessly run [--skip-confirm] --adapter custom|codex --adapter-command "<cmd>" "<goal>"',
       '  harnessly template promote [task-id] [--name <template-name>]',
-      '  harnessly archive requirement|design|both <task-id> [--topic <name>] [--force]',
-      '  harnessly archive requirement|design|both --latest [--topic <name>] [--force]',
+      '  harnessly archive promote <task-id> --topic=<slug> --files=<list> [--mode=<mode>] [--json]',
+      '  harnessly archive list [--json]',
+      '  harnessly archive show <topic> [--json]',
+      '  harnessly archive verify [--json]',
       '  harnessly evidence baseline [--show] [--clear] [--json]',
       '  harnessly feedback list',
       '  harnessly feedback promote <task-id> [reason]',
@@ -42,6 +46,8 @@ function printUsage(): void {
       '  harnessly host user-prompt-submit [--prompt "..."]',
       '  harnessly host completion-gate [--message "..."]',
       '  harnessly host agent-event --agent harness-planner|harness-evaluator [--event started|completed] [--task-id <task-id>] [--model <model>]',
+  '  harnessly host artifact-guard --file <path> [--task-id <id>]',
+  '  harnessly host resident-review --trigger <pre_push|pre_merge> [--task-id <id>]',
     ].join('\n') + '\n',
   );
 }
@@ -127,6 +133,12 @@ export async function runCli(argv: string[]): Promise<void> {
         return;
       case 'agent-event':
         await runHostAgentEvent(parsed.flags, rest);
+        return;
+      case 'artifact-guard':
+        await runHostArtifactGuard(parsed.flags);
+        return;
+      case 'resident-review':
+        await runHostResidentReview(parsed.flags);
         return;
       default:
         printUsage();

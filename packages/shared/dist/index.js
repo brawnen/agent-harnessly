@@ -70,6 +70,19 @@ var assetPromotionSchema = z.object({
   files: z.array(z.string().min(1)),
   mode: z.enum(["new_topic", "append", "replace"])
 });
+var sourceTaskEntrySchema = z.object({
+  task_id: z.string().min(1),
+  goal: z.string().min(1),
+  promoted_files: z.array(z.string().min(1)),
+  promoted_at: z.string().min(1),
+  promotion_mode: z.enum(["new_topic", "append", "replace"])
+});
+var harnessMetaFileSchema = z.object({
+  topic: z.string().min(1),
+  created_at: z.string().min(1),
+  harness_version: z.string().min(1),
+  source_tasks: z.array(sourceTaskEntrySchema)
+});
 var contractSchema = z.object({
   version: z.literal("2.0"),
   taskId: z.string(),
@@ -671,6 +684,7 @@ export {
   evidenceSnapshotSchema,
   feedbackEntrySchema,
   harnessConfigSchema,
+  harnessMetaFileSchema,
   hostNameSchema,
   packageInfo,
   parseAgentManifestYaml,
@@ -691,6 +705,7 @@ export {
   serializeTaskReport,
   serializeTemplateDraft,
   skillSchema,
+  sourceTaskEntrySchema,
   stageMarkerSchema,
   taskOwnerRoleSchema,
   taskReportArtifactsSchema,

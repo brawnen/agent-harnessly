@@ -18,7 +18,6 @@ export interface HarnessPaths {
   configFile: string;
   structureRulesFile: string;
   reviewAgentsFile: string;
-  globalRulesFile: string;
   activeTaskFile: string;
 }
 
@@ -36,7 +35,6 @@ export function getHarnessPaths(workDir: string): HarnessPaths {
     configFile: path.join(harnessDir, 'harness.config.yaml'),
     structureRulesFile: path.join(harnessDir, 'structure-rules.yaml'),
     reviewAgentsFile: path.join(harnessDir, 'review-agents.yaml'),
-    globalRulesFile: path.join(harnessDir, 'GLOBAL_RULES.md'),
     activeTaskFile: path.join(harnessDir, 'active-task.txt'),
   };
 }
@@ -81,19 +79,6 @@ export async function ensureHarnessDirectories(workDir: string): Promise<Harness
   await mkdir(paths.skillsDir, { recursive: true });
 
   return paths;
-}
-
-export function renderGlobalRulesTemplate(): string {
-  return [
-    '# GLOBAL_RULES',
-    '',
-    '在这里填写当前仓库的长期稳定规则。',
-    '',
-    '- 只写 repo 级事实，不写个人级习惯',
-    '- 只写长期稳定约束，不写一次性任务说明',
-    '- 代码验证命令、交付门禁、目录约定优先写在这里',
-    '',
-  ].join('\n');
 }
 
 export async function writeFileIfChanged(

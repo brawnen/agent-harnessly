@@ -136,8 +136,8 @@ describe('archiveTaskArtifacts', () => {
     const readme = await readFile(path.join(result.targetDir, 'README.md'), 'utf8');
     expect(readme).toContain('# Task Archive: 修复 list 输出');
     expect(readme).toContain('archived_kind: both');
-    expect(readme).toContain('requirement');
-    expect(readme).toContain('design');
+    expect(readme).toContain('contract.yaml');
+    expect(readme).toContain('plan.md');
   });
 
   it('respects --topic and creates topic subdirectory', async () => {

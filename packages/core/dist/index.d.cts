@@ -1,4 +1,4 @@
-import { AgentRole, AgentManifest, StageMarker, AssetPromotion, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, TaskContext, TaskReport, CommitGateResult, RequiredCheck, TemplateDraft, Skill, TaskSummary, RiskLevel } from '@harnessly/shared';
+import { AgentRole, AgentManifest, StageMarker, AssetPromotion, HarnessMetaFile, SourceTaskEntry, ArchiveTopicSummary, ArchiveTopicDetail, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, PromoteAction, TaskContext, TaskReport, Finding, FindingGroup, CommitGateResult, RequiredCheck, TemplateDraft, ResidentReviewResult, Skill, TaskSummary, RiskLevel } from '@harnessly/shared';
 import { z } from 'zod';
 
 /**
@@ -63,27 +63,22 @@ declare function writeDefaultAgentManifests(workDir: string, force?: boolean): P
 /**
  * v3-core §22 Knowledge Asset Promotion 实施。
  *
- * 把任务工件（contract.yaml / plan.md / report.json）从 .harness/tasks/<id>/
- * 晋升到 docs/architecture/<topic>/<task-id>/，作为长期保留的项目资产。
- *
  * 关键约束：
- * - 只写 repo 内 docs/，绝不写用户 home
- * - 默认 force=false 时跳过已存在的目标文件，避免覆盖人工编辑
- * - 不对 .harness/ 做任何修改（archive 是只读 copy + 写新位置）
+ * - 只写 repo 内 docs/architecture/<topic>/，绝不写用户 home
+ * - _harness-meta.json：每个 topic 一个，source_tasks 仅追加
+ * - README.md 使用 <!-- harness:auto-start --> / <!-- harness:auto-end --> 标记
  */
 type ArchiveKind = 'requirement' | 'design' | 'both';
 interface ArchiveOptions {
-    /** 归档分类（决定 docs/architecture 下的子目录名）。默认 'tasks' */
     topic?: string;
-    /** 资产晋升模式：new_topic 不覆盖，append 保留现有文件，replace 需配合 force 覆盖 */
     mode?: AssetPromotion['mode'];
-    /** force=true 时覆盖目标位置已有文件 */
     force?: boolean;
 }
 interface ArchivedFile {
     source: string;
     target: string;
     status: 'created' | 'updated' | 'skipped';
+    versionSuffix?: string;
 }
 interface ArchiveResult {
     taskId: string;
@@ -91,25 +86,62 @@ interface ArchiveResult {
     targetDir: string;
     files: ArchivedFile[];
 }
+declare function getHarnessMetaPath(topicDir: string): string;
+declare function loadHarnessMeta(topicDir: string): Promise<HarnessMetaFile | null>;
+declare function saveHarnessMeta(topicDir: string, meta: HarnessMetaFile): Promise<void>;
+declare function appendToHarnessMeta(existing: HarnessMetaFile | null, topic: string, entry: SourceTaskEntry): HarnessMetaFile;
+interface PromoteTaskOptions {
+    topic: string;
+    files: string[];
+    mode: AssetPromotion['mode'];
+    skipMeta?: boolean;
+}
+/**
+ * v3-core §22.2 知识资产晋升核心函数。
+ *
+ * 1. 读 task 工件
+ * 2. 按 mode 决定目标路径（new_topic 冲突抛错 / append -vN / replace 备份）
+ * 3. 复制文件
+ * 4. 更新 _harness-meta.json（仅追加）
+ * 5. 重新生成 README.md（保留标记外用户编辑）
+ */
+declare function promoteTaskArtifacts(workDir: string, taskId: string, options: PromoteTaskOptions): Promise<ArchiveResult>;
+declare function listArchiveTopics(workDir: string): Promise<ArchiveTopicSummary[]>;
+declare function showArchiveTopic(workDir: string, topic: string): Promise<ArchiveTopicDetail | null>;
+/**
+ * 校验所有 topic 的 _harness-meta.json 来源完整性。
+ * 报告孤儿 topic（有 meta 但 source_tasks 引用的 task 已不存在）。
+ */
+declare function verifyArchive(workDir: string): Promise<{
+    topic: string;
+    orphanTasks: string[];
+    valid: boolean;
+}[]>;
 interface ArchiveTargetPaths {
     archDir: string;
     topicDir: string;
 }
 declare function getArchiveTargetPaths(workDir: string, _taskId: string, topic?: string): ArchiveTargetPaths;
-/**
- * 把指定 task 的工件晋升到 docs/architecture/<topic>/。
- *
- * 流程：
- * 1. 通过 TaskManager.load 校验 task 存在并加载 contract / plan
- * 2. 按 kind 选择要归档的文件（contract.yaml / plan.md / both）
- * 3. 复制到目标位置（force=false 时已存在则跳过）
- * 4. 渲染并写入 README.md（每次归档强制覆盖 README，因为它是元信息）
- *
- * 不修改 .harness/，只读源 + 写新目标。
- */
+/** @deprecated 使用 promoteTaskArtifacts */
 declare function archiveTaskArtifacts(workDir: string, taskId: string, kind: ArchiveKind, options?: ArchiveOptions): Promise<ArchiveResult>;
 
 declare function runArtifactGuard(taskDir: string): Promise<EvidenceCheckResult>;
+interface WriteCheckResult {
+    allowed: boolean;
+    reason: string;
+    file: string;
+    currentStage?: string;
+    requiredStage?: string;
+}
+/**
+ * 检查当前是否有权写入指定文件路径。
+ *
+ * 规则（SPEC §10）：
+ * - `docs/architecture/` 路径仅系统命令可写 → 拒绝
+ * - `.harness/tasks/<id>/<artifact>` 匹配 → 读 state.json 对比 currentStage
+ * - 非任务工件路径 → 放行
+ */
+declare function checkWritePermission(workDir: string, filePath: string, activeTaskId?: string): Promise<WriteCheckResult>;
 
 declare function createDefaultHarnessConfig(projectType: ProjectType, hosts?: HostName[]): HarnessConfig;
 declare function serializeHarnessConfig(config: HarnessConfig): string;
@@ -261,6 +293,23 @@ declare function pickRecentEntries(entries: readonly FeedbackEntry[], options?: 
  */
 declare function renderFeedbackEntriesAsLines(entries: readonly FeedbackEntry[]): string[];
 declare function promoteFeedbackEntry(workDir: string, taskId: string, reason?: string): Promise<FeedbackEntry>;
+/**
+ * 按 category + summary trigram 相似度（阈值 0.6）聚类。
+ * 对每组合并成员，计算建议晋升目标（所有成员 promotable_as 的交集）。
+ */
+declare function groupFindingsBySimilarity(findings: readonly Finding[], similarityThreshold?: number): FindingGroup[];
+/**
+ * 把晋升结果应用到仓库中：
+ * - lint/structure_rule → 追加到 structure-rules.yaml
+ * - review_prompt → 追加到 review-agents.yaml 对应 agent 的 prompt
+ * - skill_fix_hint → 更新 skill 的 fix_hint_template
+ * - failed_test → 生成测试文件
+ */
+declare function applyPromotion(workDir: string, action: PromoteAction): Promise<string>;
+/**
+ * 将已处理的 finding 从 pool 移到 feedback-history.md。
+ */
+declare function moveFindingsToHistory(workDir: string, action: PromoteAction): Promise<void>;
 
 interface EvaluateCommitGateOptions {
     /**
@@ -313,6 +362,18 @@ declare function assemblePrompt(ctx: TaskContext): string;
 
 declare function createTaskReport(ctx: TaskContext, adapter: AdapterOutput, evidence: EvidenceResult, commitGate: CommitGateResult): TaskReport;
 
+/**
+ * v3-core §14 常驻 review agent 核心入口。
+ *
+ * 根据 trigger 筛选 review-agents.yaml 中匹配的 agent，
+ * 并行 spawn，收集 findings，写入 resident-review.md。
+ *
+ * 当前版本为 CLI 触发式（通过 git hook 或手动调用）。
+ */
+declare function runResidentReview(workDir: string, trigger: string, activeTaskId?: string): Promise<ResidentReviewResult>;
+/**
+ * 渲染 resident-review.md 内容（兼容旧接口，供 workflow 中 review 阶段调用）。
+ */
 declare function renderResidentReview(workDir: string, findings: readonly EvidenceCheckResult[]): Promise<string>;
 
 declare function runReviewStage(changedFiles: string[]): EvidenceCheckResult[];
@@ -329,14 +390,12 @@ interface HarnessPaths {
     configFile: string;
     structureRulesFile: string;
     reviewAgentsFile: string;
-    globalRulesFile: string;
     activeTaskFile: string;
 }
 declare function getHarnessPaths(workDir: string): HarnessPaths;
 declare function renderStructureRulesTemplate(): string;
 declare function renderReviewAgentsTemplate(): string;
 declare function ensureHarnessDirectories(workDir: string): Promise<HarnessPaths>;
-declare function renderGlobalRulesTemplate(): string;
 declare function writeFileIfChanged(filePath: string, content: string, force?: boolean): Promise<'created' | 'updated' | 'skipped'>;
 declare function loadHarnessConfig(workDir: string): Promise<HarnessConfig>;
 declare function writeHarnessConfig(workDir: string, config: HarnessConfig, force?: boolean): Promise<'created' | 'updated' | 'skipped'>;
@@ -395,6 +454,11 @@ declare class TaskManager {
     savePrompt(ctx: TaskContext, prompt: string): Promise<string>;
     saveReport(ctx: TaskContext, report: TaskReport): Promise<void>;
     saveFeedback(ctx: TaskContext, feedback: string): Promise<void>;
+    /**
+     * 向 commit-summary.md 追加一个小节。用于声明式晋升等场景记录。
+     * best-effort：写入失败不抛。
+     */
+    appendCommitSummarySection(ctx: TaskContext, heading: string, content: string): Promise<void>;
     clearFeedback(ctx: TaskContext): Promise<void>;
     markFailure(ctx: TaskContext, stage: StageMarker, reason: string): Promise<void>;
     markRetrying(ctx: TaskContext): Promise<void>;
@@ -510,4 +574,4 @@ interface CorePackageInfo {
 }
 declare function getCorePackageInfo(): CorePackageInfo;
 
-export { AGENT_ROLES, type Adapter, type AgentDiskFiles, type AgentRoutingIntent, type AgentWriteResult, AnthropicClient, type AnthropicClientOptions, type ArchiveKind, type ArchiveOptions, type ArchiveResult, type ArchiveTargetPaths, type ArchivedFile, type BuiltinTemplateDefinition, CORE_PACKAGE_NAME, ClaudeCodeAdapter, CodexAdapter, type ContractGenerationOptions, type CorePackageInfo, CustomAdapter, EVIDENCE_BASELINE_FILENAME, type EvaluateCommitGateOptions, FEEDBACK_POOL_FILENAME, HARNESS_DIRNAME, type HarnessPaths, type LLMClient, type PickRecentEntriesOptions, type ScopeViolation, type SkillWriteResult, type StructuredGenerationOptions, TaskManager, TemplateRegistry, type TextGenerationOptions, WorkflowEngine, type WorkflowRunOptions, appendFeedbackEntry, archiveTaskArtifacts, assemblePrompt, buildBaselineDiff, buildEvidenceBaseline, buildEvidenceSnapshot, buildFeedbackEntry, checkContract, collectChangedFiles, collectEnabledRoles, collectEvidence, createAdapter, createDefaultHarnessConfig, createLLMClientFromEnv, createTaskReport, createTemplateDraft, createTemplateRegistry, deriveTemplateName, detectProjectType, ensureHarnessDirectories, evaluateCommitGate, generateContract, generateFallbackContract, generatePlan, getAgentDiskFiles, getArchiveTargetPaths, getBuiltinTemplates, getCorePackageInfo, getDefaultAgentManifest, getDefaultRequiredChecks, getEvidenceBaselinePath, getFeedbackHistoryPath, getFeedbackPoolPath, getHarnessPaths, getRoleForStage, getSkillPath, getTaskEvidenceDir, getTaskEvidencePath, listAgentFiles, loadAgentManifest, loadAgentManifests, loadEvidenceBaseline, loadFeedbackPool, loadHarnessConfig, loadSkill, matchTemplate, parseHarnessConfig, pickRecentEntries, pickRecommendedAgent, promoteFeedbackEntry, renderFeedbackEntriesAsLines, renderGlobalRulesTemplate, renderResidentReview, renderReviewAgentsTemplate, renderSkillTemplate, renderStructureRulesTemplate, runArtifactGuard, runLevel2Validation, runReviewStage, runScopeCheck, runSkillCheck, runStructureCheck, saveBaselineDiff, saveEvidenceBaseline, saveEvidenceSnapshot, saveTemplateDraft, serializeHarnessConfig, writeDefaultAgentManifests, writeDefaultSkillManifests, writeFileIfChanged, writeHarnessConfig };
+export { AGENT_ROLES, type Adapter, type AgentDiskFiles, type AgentRoutingIntent, type AgentWriteResult, AnthropicClient, type AnthropicClientOptions, type ArchiveKind, type ArchiveOptions, type ArchiveResult, type ArchiveTargetPaths, type ArchivedFile, type BuiltinTemplateDefinition, CORE_PACKAGE_NAME, ClaudeCodeAdapter, CodexAdapter, type ContractGenerationOptions, type CorePackageInfo, CustomAdapter, EVIDENCE_BASELINE_FILENAME, type EvaluateCommitGateOptions, FEEDBACK_POOL_FILENAME, HARNESS_DIRNAME, type HarnessPaths, type LLMClient, type PickRecentEntriesOptions, type PromoteTaskOptions, type ScopeViolation, type SkillWriteResult, type StructuredGenerationOptions, TaskManager, TemplateRegistry, type TextGenerationOptions, WorkflowEngine, type WorkflowRunOptions, type WriteCheckResult, appendFeedbackEntry, appendToHarnessMeta, applyPromotion, archiveTaskArtifacts, assemblePrompt, buildBaselineDiff, buildEvidenceBaseline, buildEvidenceSnapshot, buildFeedbackEntry, checkContract, checkWritePermission, collectChangedFiles, collectEnabledRoles, collectEvidence, createAdapter, createDefaultHarnessConfig, createLLMClientFromEnv, createTaskReport, createTemplateDraft, createTemplateRegistry, deriveTemplateName, detectProjectType, ensureHarnessDirectories, evaluateCommitGate, generateContract, generateFallbackContract, generatePlan, getAgentDiskFiles, getArchiveTargetPaths, getBuiltinTemplates, getCorePackageInfo, getDefaultAgentManifest, getDefaultRequiredChecks, getEvidenceBaselinePath, getFeedbackHistoryPath, getFeedbackPoolPath, getHarnessMetaPath, getHarnessPaths, getRoleForStage, getSkillPath, getTaskEvidenceDir, getTaskEvidencePath, groupFindingsBySimilarity, listAgentFiles, listArchiveTopics, loadAgentManifest, loadAgentManifests, loadEvidenceBaseline, loadFeedbackPool, loadHarnessConfig, loadHarnessMeta, loadSkill, matchTemplate, moveFindingsToHistory, parseHarnessConfig, pickRecentEntries, pickRecommendedAgent, promoteFeedbackEntry, promoteTaskArtifacts, renderFeedbackEntriesAsLines, renderResidentReview, renderReviewAgentsTemplate, renderSkillTemplate, renderStructureRulesTemplate, runArtifactGuard, runLevel2Validation, runResidentReview, runReviewStage, runScopeCheck, runSkillCheck, runStructureCheck, saveBaselineDiff, saveEvidenceBaseline, saveEvidenceSnapshot, saveHarnessMeta, saveTemplateDraft, serializeHarnessConfig, showArchiveTopic, verifyArchive, writeDefaultAgentManifests, writeDefaultSkillManifests, writeFileIfChanged, writeHarnessConfig };

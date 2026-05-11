@@ -112,6 +112,109 @@ export interface AssetPromotion {
   mode: 'new_topic' | 'append' | 'replace';
 }
 
+/**
+ * v3-core §4.1.16 _harness-meta.json source_tasks 条目。
+ * 每次晋升追加一条，不得删除已有条目。
+ */
+export interface SourceTaskEntry {
+  task_id: string;
+  goal: string;
+  promoted_files: string[];
+  promoted_at: string;
+  promotion_mode: 'new_topic' | 'append' | 'replace';
+}
+
+/** v3-core §4.1.16 _harness-meta.json 文件结构 */
+export interface HarnessMetaFile {
+  topic: string;
+  created_at: string;
+  harness_version: string;
+  source_tasks: SourceTaskEntry[];
+}
+
+/** archive list 输出 */
+export interface ArchiveTopicSummary {
+  topic: string;
+  fileCount: number;
+  sourceTaskCount: number;
+  lastPromotedAt: string;
+}
+
+/** archive show 输出 */
+export interface ArchiveTopicDetail {
+  topic: string;
+  readme: string;
+  files: string[];
+  sourceTasks: SourceTaskEntry[];
+}
+
+// ===== Feedback Promotion (§15) =====
+
+export type FindingCategory = 'reliability' | 'scalability' | 'security' | 'style' | 'other';
+export type PromotableAs = 'lint' | 'structure_rule' | 'failed_test' | 'review_prompt' | 'skill_fix_hint';
+
+export interface FindingExample {
+  task: string;
+  file: string;
+  line?: number;
+}
+
+export interface Finding {
+  id: string;
+  kind: 'recurrent_pattern';
+  category: FindingCategory;
+  summary: string;
+  examples: FindingExample[];
+  fix_hint: string;
+  promotable_as: PromotableAs[];
+}
+
+export interface FindingGroup {
+  category: FindingCategory;
+  summary: string;
+  count: number;
+  findings: Finding[];
+  suggestedTargets: PromotableAs[];
+}
+
+export interface PromoteAction {
+  group: FindingGroup;
+  target: PromotableAs | 'dismiss';
+}
+
+// ===== Resident Review Agent (§14) =====
+
+export interface ReviewAgentConfig {
+  name: string;
+  triggers: ('pre_push' | 'pre_merge' | 'on_demand')[];
+  model: string;
+  prompt: string;
+  blocking_severity: 'P0' | 'P1' | 'P2';
+}
+
+export interface ReviewAgentsConfig {
+  review_agents: ReviewAgentConfig[];
+}
+
+export interface ResidentReviewFinding {
+  id: string;
+  severity: 'P0' | 'P1' | 'P2';
+  description: string;
+  file?: string;
+  line?: number;
+  fix_hint: string;
+  recurrent_pattern: boolean;
+  agent_name: string;
+  trigger: string;
+}
+
+export interface ResidentReviewResult {
+  trigger: string;
+  findings: ResidentReviewFinding[];
+  hadBlockingFinding: boolean;
+  agentsSpawned: string[];
+}
+
 export interface ContractGateResult {
   passed: boolean;
   failures: string[];
@@ -463,6 +566,21 @@ export const assetPromotionSchema: z.ZodType<AssetPromotion> = z.object({
   topic: z.string().min(1).optional(),
   files: z.array(z.string().min(1)),
   mode: z.enum(['new_topic', 'append', 'replace']),
+});
+
+export const sourceTaskEntrySchema: z.ZodType<SourceTaskEntry> = z.object({
+  task_id: z.string().min(1),
+  goal: z.string().min(1),
+  promoted_files: z.array(z.string().min(1)),
+  promoted_at: z.string().min(1),
+  promotion_mode: z.enum(['new_topic', 'append', 'replace']),
+});
+
+export const harnessMetaFileSchema: z.ZodType<HarnessMetaFile> = z.object({
+  topic: z.string().min(1),
+  created_at: z.string().min(1),
+  harness_version: z.string().min(1),
+  source_tasks: z.array(sourceTaskEntrySchema),
 });
 
 export const contractSchema: z.ZodType<Contract> = z.object({

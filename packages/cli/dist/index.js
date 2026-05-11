@@ -6,7 +6,14 @@ import { getCorePackageInfo } from "@harnessly/core";
 
 // src/commands/archive.ts
 import path2 from "path";
-import { archiveTaskArtifacts, TaskManager } from "@harnessly/core";
+import {
+  archiveTaskArtifacts,
+  listArchiveTopics,
+  promoteTaskArtifacts,
+  showArchiveTopic,
+  TaskManager,
+  verifyArchive
+} from "@harnessly/core";
 
 // src/utils/events.ts
 import { appendFile, mkdir } from "fs/promises";
@@ -38,58 +45,116 @@ function printLines(lines) {
 
 // src/commands/archive.ts
 var VALID_KINDS = ["requirement", "design", "both"];
+var VALID_MODES = ["new_topic", "append", "replace"];
 function isArchiveKind(value) {
   return VALID_KINDS.includes(value);
 }
 function readStringFlag(flags, name) {
   return typeof flags[name] === "string" ? flags[name].trim() : "";
 }
+function parseFiles(value) {
+  return value.split(",").map((f) => f.trim()).filter(Boolean);
+}
 async function runArchive(flags, positionals) {
   const workDir = process.cwd();
-  const [rawKind, rawTaskId] = positionals;
-  const kindInput = (rawKind ?? "").trim();
-  if (!kindInput) {
+  const [subcommand, ...rest] = positionals;
+  if (subcommand === "promote") {
+    await handlePromote(workDir, flags, rest);
+    return;
+  }
+  if (subcommand === "list") {
+    const topics = await listArchiveTopics(workDir);
+    if (flags.json) {
+      printJson(topics);
+    } else if (topics.length === 0) {
+      printLines(["\u6CA1\u6709\u5DF2\u664B\u5347\u7684\u67B6\u6784\u8D44\u4EA7\u3002\u4F7F\u7528 harness archive promote \u521B\u5EFA\u3002"]);
+    } else {
+      printLines([
+        `\u5171 ${topics.length} \u4E2A topic\uFF1A`,
+        ...topics.map(
+          (t) => `- ${t.topic} (${t.fileCount} \u6587\u4EF6, ${t.sourceTaskCount} \u6765\u6E90\u4EFB\u52A1, \u6700\u540E\u664B\u5347: ${t.lastPromotedAt})`
+        )
+      ]);
+    }
+    return;
+  }
+  if (subcommand === "show") {
+    const topic2 = rest[0]?.trim();
+    if (!topic2) throw new Error("\u7F3A\u5C11 topic \u53C2\u6570\u3002\u7528\u6CD5\uFF1Aharness archive show <topic>");
+    const detail = await showArchiveTopic(workDir, topic2);
+    if (!detail) throw new Error(`topic "${topic2}" \u4E0D\u5B58\u5728`);
+    if (flags.json) {
+      printJson(detail);
+    } else {
+      printLines([
+        `topic: ${detail.topic}`,
+        `\u6587\u4EF6: ${detail.files.join(", ") || "(\u65E0)"}`,
+        `\u6765\u6E90\u4EFB\u52A1\u6570: ${detail.sourceTasks.length}`,
+        ...detail.sourceTasks.map((t) => `  - ${t.task_id} ${t.goal} (${t.promotion_mode})`)
+      ]);
+    }
+    return;
+  }
+  if (subcommand === "verify") {
+    const results = await verifyArchive(workDir);
+    const orphans = results.filter((r) => !r.valid);
+    if (flags.json) {
+      printJson(results);
+    } else if (orphans.length === 0) {
+      printLines(["\u6240\u6709 topic \u6765\u6E90\u5B8C\u6574\uFF0C\u65E0\u5B64\u513F\u5F15\u7528\u3002"]);
+    } else {
+      printLines([
+        `\u53D1\u73B0 ${orphans.length} \u4E2A topic \u6709\u5B64\u513F\u5F15\u7528\uFF1A`,
+        ...orphans.map((o) => `  - ${o.topic}: ${o.orphanTasks.join(", ")}`)
+      ]);
+    }
+    return;
+  }
+  const rawKind = subcommand ?? "";
+  if (!rawKind) {
     throw new Error(
-      `\u7F3A\u5C11 archive kind\u3002\u5141\u8BB8\u503C\uFF1A${VALID_KINDS.join(", ")}
-\u7528\u6CD5\uFF1Aharnessly archive <kind> <task-id> [--topic <name>] [--force]`
+      "\u7528\u6CD5\uFF1Aharness archive promote|list|show|verify\n\u517C\u5BB9\u65E7\u8BED\u6CD5\uFF1Aharness archive requirement|design|both <task-id> [--topic] [--force]"
     );
   }
-  if (!isArchiveKind(kindInput)) {
-    throw new Error(`\u975E\u6CD5\u7684 archive kind: "${kindInput}"\u3002\u5141\u8BB8\u503C\uFF1A${VALID_KINDS.join(", ")}`);
+  if (rawKind === "promote" || rawKind === "list" || rawKind === "show" || rawKind === "verify") {
+    printLines(["\u5185\u90E8\u9519\u8BEF\uFF1A\u672A\u9884\u671F\u7684\u5B50\u547D\u4EE4\u8DEF\u7531"]);
+    return;
   }
+  if (!isArchiveKind(rawKind)) {
+    throw new Error(
+      `\u975E\u6CD5\u7684\u5B50\u547D\u4EE4: "${rawKind}"\u3002\u7528\u6CD5\uFF1Aharness archive promote|list|show|verify
+\u517C\u5BB9\u65E7\u8BED\u6CD5\uFF1Aharness archive requirement|design|both <task-id> [--topic] [--force]`
+    );
+  }
+  const rawTaskId = rest[0]?.trim();
   const manager = new TaskManager();
-  const requestedTaskId = readStringFlag(flags, "task-id") || (rawTaskId ?? "").trim();
+  const requestedTaskId = readStringFlag(flags, "task-id") || rawTaskId || "";
   const useLatest = flags.latest === true;
   let taskId = requestedTaskId;
   if (!taskId) {
-    if (!useLatest) {
-      throw new Error("\u7F3A\u5C11 task-id\u3002\u53EF\u663E\u5F0F\u4F20\u5165\u6216\u52A0 --latest \u81EA\u52A8\u53D6\u6700\u8FD1\u4E00\u4E2A task\u3002");
-    }
+    if (!useLatest) throw new Error("\u7F3A\u5C11 task-id");
     const latest = await manager.getLatestTaskId(workDir);
-    if (!latest) {
-      throw new Error("\u6CA1\u6709\u4EFB\u4F55 task\u3002\u5148\u6267\u884C harnessly run \u6216 harnessly host user-prompt-submit\u3002");
-    }
+    if (!latest) throw new Error("\u6CA1\u6709\u4EFB\u4F55 task");
     taskId = latest;
   }
   const topic = readStringFlag(flags, "topic") || void 0;
   const force = flags.force === true;
-  const result = await archiveTaskArtifacts(workDir, taskId, kindInput, { topic, force });
+  const result = await archiveTaskArtifacts(workDir, taskId, rawKind, { topic, force });
   await appendHarnessEvent(workDir, {
     type: "archive.task_promoted",
     taskId: result.taskId,
     topic: result.topic,
-    kind: kindInput,
+    kind: rawKind,
     force,
     files: result.files.map((f) => ({
       target: path2.relative(workDir, f.target),
       status: f.status
     }))
   });
-  if (flags.json === true) {
+  if (flags.json) {
     printJson({
       taskId: result.taskId,
       topic: result.topic,
-      kind: kindInput,
       targetDir: path2.relative(workDir, result.targetDir),
       files: result.files.map((f) => ({
         source: f.source.startsWith(workDir) ? path2.relative(workDir, f.source) : f.source,
@@ -102,10 +167,55 @@ async function runArchive(flags, positionals) {
   printLines([
     `\u5F52\u6863\u5B8C\u6210\uFF1A${result.taskId} \u2192 ${path2.relative(workDir, result.targetDir)}`,
     `- topic: ${result.topic}`,
-    `- kind: ${kindInput}`,
-    ...result.files.map(
-      (f) => `- ${path2.relative(workDir, f.target)} [${f.status}]`
-    )
+    ...result.files.map((f) => `- ${path2.relative(workDir, f.target)} [${f.status}]`)
+  ]);
+}
+async function handlePromote(workDir, flags, positionals) {
+  const rawTaskId = positionals[0]?.trim();
+  const taskId = readStringFlag(flags, "task-id") || rawTaskId;
+  if (!taskId) throw new Error("\u7F3A\u5C11 task-id\u3002\u7528\u6CD5\uFF1Aharness archive promote <task-id> --topic=<slug> --files=requirement.md,design.md");
+  const topic = readStringFlag(flags, "topic");
+  if (!topic) throw new Error("\u7F3A\u5C11 --topic\u3002\u7528\u6CD5\uFF1Aharness archive promote <task-id> --topic=<slug>");
+  const filesStr = readStringFlag(flags, "files");
+  if (!filesStr) throw new Error("\u7F3A\u5C11 --files\u3002\u7528\u6CD5\uFF1Aharness archive promote <task-id> --files=requirement.md,design.md");
+  const files = parseFiles(filesStr);
+  if (files.length === 0) throw new Error("--files \u4E0D\u80FD\u4E3A\u7A7A");
+  const modeStr = readStringFlag(flags, "mode") || "new_topic";
+  if (!VALID_MODES.includes(modeStr)) {
+    throw new Error(`\u975E\u6CD5\u7684 mode: "${modeStr}"\u3002\u5141\u8BB8\u503C\uFF1A${VALID_MODES.join(", ")}`);
+  }
+  const mode = modeStr;
+  const result = await promoteTaskArtifacts(workDir, taskId, { topic, files, mode });
+  await appendHarnessEvent(workDir, {
+    type: "archive.promoted",
+    taskId: result.taskId,
+    topic: result.topic,
+    mode,
+    files: result.files.map((f) => ({
+      source: path2.relative(workDir, f.source),
+      target: path2.relative(workDir, f.target),
+      status: f.status
+    }))
+  });
+  if (flags.json) {
+    printJson({
+      taskId: result.taskId,
+      topic: result.topic,
+      mode,
+      targetDir: path2.relative(workDir, result.targetDir),
+      files: result.files.map((f) => ({
+        source: path2.relative(workDir, f.source),
+        target: path2.relative(workDir, f.target),
+        status: f.status
+      }))
+    });
+    return;
+  }
+  printLines([
+    `\u664B\u5347\u5B8C\u6210\uFF1A${result.taskId} \u2192 ${path2.relative(workDir, result.targetDir)}`,
+    `- topic: ${result.topic}`,
+    `- mode: ${mode}`,
+    ...result.files.map((f) => `- ${path2.relative(workDir, f.target)} [${f.status}]`)
   ]);
 }
 
@@ -217,7 +327,6 @@ import {
   createDefaultHarnessConfig,
   detectProjectType,
   ensureHarnessDirectories,
-  renderGlobalRulesTemplate,
   renderReviewAgentsTemplate,
   renderStructureRulesTemplate,
   writeDefaultSkillManifests,
@@ -226,9 +335,73 @@ import {
   writeHarnessConfig
 } from "@harnessly/core";
 
-// src/utils/hosts.ts
-import { mkdir as mkdir2, readFile, writeFile } from "fs/promises";
+// src/utils/git-hooks.ts
+import { chmod, mkdir as mkdir2, readFile } from "fs/promises";
 import path3 from "path";
+async function installGitHooks(workDir, hosts) {
+  const installed = [];
+  const hooksDir = path3.join(workDir, ".git", "hooks");
+  await mkdir2(hooksDir, { recursive: true });
+  const harnessBin = 'node "$(git rev-parse --show-toplevel)/packages/cli/dist/index.js"';
+  const prePushPath = path3.join(hooksDir, "pre-push");
+  const prePushScript = [
+    "#!/bin/bash",
+    "# Managed by Harnessly \u2014 v3-core \xA714 \u5E38\u9A7B review agent pre_push \u89E6\u53D1",
+    "set -e",
+    "",
+    `echo "[harnessly] pre-push: running resident review..."`,
+    `${harnessBin} host resident-review --trigger pre_push`,
+    "REVIEW_EXIT=$?",
+    "",
+    "if [ $REVIEW_EXIT -ne 0 ]; then",
+    '  echo "[harnessly] resident review \u53D1\u73B0\u963B\u65AD\u7EA7 finding\uFF0Cpush \u5DF2\u62E6\u622A"',
+    "  exit 1",
+    "fi",
+    "",
+    'echo "[harnessly] resident review \u901A\u8FC7"',
+    "exit 0",
+    ""
+  ].join("\n");
+  await copyFileOrWrite(prePushPath, prePushScript);
+  await chmod(prePushPath, 493);
+  installed.push(".git/hooks/pre-push");
+  const preMergePath = path3.join(hooksDir, "pre-merge-commit");
+  const preMergeScript = [
+    "#!/bin/bash",
+    "# Managed by Harnessly \u2014 v3-core \xA714 \u5E38\u9A7B review agent pre_merge \u89E6\u53D1",
+    "set -e",
+    "",
+    `echo "[harnessly] pre-merge: running resident review..."`,
+    `${harnessBin} host resident-review --trigger pre_merge`,
+    "REVIEW_EXIT=$?",
+    "",
+    "if [ $REVIEW_EXIT -ne 0 ]; then",
+    '  echo "[harnessly] resident review \u53D1\u73B0\u963B\u65AD\u7EA7 finding\uFF0Cmerge \u5DF2\u62E6\u622A"',
+    "  exit 1",
+    "fi",
+    "",
+    'echo "[harnessly] resident review \u901A\u8FC7"',
+    "exit 0",
+    ""
+  ].join("\n");
+  await copyFileOrWrite(preMergePath, preMergeScript);
+  await chmod(preMergePath, 493);
+  installed.push(".git/hooks/pre-merge-commit");
+  return installed;
+}
+async function copyFileOrWrite(filePath, content) {
+  await mkdir2(path3.dirname(filePath), { recursive: true });
+  const existing = await readFile(filePath, "utf8").catch(() => null);
+  if (existing && !existing.includes("Managed by Harnessly")) {
+    throw new Error(`${filePath} \u5DF2\u5B58\u5728\u4E14\u4E0D\u662F Harnessly \u7BA1\u7406\u7684 hook\uFF0C\u62D2\u7EDD\u8986\u76D6`);
+  }
+  const { writeFile: writeFile4 } = await import("fs/promises");
+  await writeFile4(filePath, content, "utf8");
+}
+
+// src/utils/hosts.ts
+import { mkdir as mkdir3, readFile as readFile2, writeFile } from "fs/promises";
+import path4 from "path";
 import { getHarnessPaths as getHarnessPaths2, loadAgentManifests, loadHarnessConfig as loadHarnessConfig2 } from "@harnessly/core";
 import { renderClaudeCodeManagedFiles } from "@harnessly/host-claude-code";
 import { renderCodexManagedFiles } from "@harnessly/host-codex";
@@ -240,7 +413,7 @@ import {
 } from "@harnessly/host-shared";
 async function readFileIfExists(filePath) {
   try {
-    return await readFile(filePath, "utf8");
+    return await readFile2(filePath, "utf8");
   } catch {
     return null;
   }
@@ -277,7 +450,7 @@ function refreshManifestCommand(manifest, commandPrefix) {
   };
 }
 async function ensureHostManifest(workDir, host) {
-  const manifestPath = path3.join(getHarnessPaths2(workDir).hostsDir, getHostManifestFilename(host));
+  const manifestPath = path4.join(getHarnessPaths2(workDir).hostsDir, getHostManifestFilename(host));
   const existing = await readFileIfExists(manifestPath);
   const commandPrefix = getCurrentHarnesslyCommand();
   if (existing) {
@@ -324,8 +497,8 @@ async function installHostShells(workDir, requestedHost) {
     const manifest = await ensureHostManifest(workDir, host);
     const files = renderRepoLocalShell(manifest, config, agentManifests);
     for (const [relativePath, content] of Object.entries(files)) {
-      const absolutePath = path3.join(workDir, relativePath);
-      await mkdir2(path3.dirname(absolutePath), { recursive: true });
+      const absolutePath = path4.join(workDir, relativePath);
+      await mkdir3(path4.dirname(absolutePath), { recursive: true });
       await writeFile(absolutePath, content, "utf8");
       installedPaths.push(relativePath);
     }
@@ -337,7 +510,7 @@ async function collectHostStatus(workDir) {
   const agentManifests = await loadAgentManifests(workDir);
   const rows = [];
   for (const host of config.enabledHosts) {
-    const manifestPath = path3.join(getHarnessPaths2(workDir).hostsDir, getHostManifestFilename(host));
+    const manifestPath = path4.join(getHarnessPaths2(workDir).hostsDir, getHostManifestFilename(host));
     const manifestText = await readFileIfExists(manifestPath);
     if (!manifestText) {
       rows.push({
@@ -352,7 +525,7 @@ async function collectHostStatus(workDir) {
     const expectedFiles = renderRepoLocalShell(manifest, config, agentManifests);
     let shellStatus = "installed";
     for (const [relativePath, expectedContent] of Object.entries(expectedFiles)) {
-      const actual = await readFileIfExists(path3.join(workDir, relativePath));
+      const actual = await readFileIfExists(path4.join(workDir, relativePath));
       if (actual === null) {
         shellStatus = "missing";
         break;
@@ -387,11 +560,6 @@ async function runInit(flags) {
   const paths = await ensureHarnessDirectories(workDir);
   const config = createDefaultHarnessConfig(projectType, hosts);
   const configStatus = await writeHarnessConfig(workDir, config, force);
-  const globalRulesStatus = await writeFileIfChanged(
-    paths.globalRulesFile,
-    renderGlobalRulesTemplate(),
-    force
-  );
   const structureRulesStatus = await writeFileIfChanged(
     paths.structureRulesFile,
     renderStructureRulesTemplate(),
@@ -414,26 +582,96 @@ async function runInit(flags) {
   for (const host of hosts) {
     await ensureHostManifest(workDir, host);
   }
+  let gitHookPaths = [];
+  try {
+    gitHookPaths = await installGitHooks(workDir, hosts);
+  } catch {
+  }
   const installedPaths = config.installRepoLocalShells ? await installHostShells(workDir) : [];
   await writeFile2(paths.activeTaskFile, "", "utf8");
   printLines([
     "Harnessly \u521D\u59CB\u5316\u5B8C\u6210",
     `- project_type: ${projectType}`,
     `- config: ${configStatus}`,
-    `- global_rules: ${globalRulesStatus}`,
     `- structure_rules: ${structureRulesStatus}`,
     `- review_agents: ${reviewAgentsStatus}`,
     `- skills: ${skillSummary}`,
     `- agents: ${agentSummary}`,
     `- hosts: ${hosts.join(", ")}`,
     `- default_host: ${config.defaultHost}`,
-    `- installed_shells: ${installedPaths.length > 0 ? installedPaths.join(", ") : "none"}`
+    `- installed_shells: ${installedPaths.length > 0 ? installedPaths.join(", ") : "none"}`,
+    `- git_hooks: ${gitHookPaths.length > 0 ? gitHookPaths.join(", ") : "none (git hooks \u5B89\u88C5\u5931\u8D25\u6216\u8DF3\u8FC7)"}`
   ]);
 }
 
+// src/commands/host/agent-event.ts
+import { AGENT_ROLES } from "@harnessly/core";
+function readStringFlag2(flags, name) {
+  return typeof flags[name] === "string" ? flags[name].trim() : "";
+}
+function normalizeAgent(value) {
+  const stripped = value.startsWith("harness-") ? value.slice("harness-".length) : value;
+  if (AGENT_ROLES.includes(stripped)) {
+    return stripped;
+  }
+  throw new Error(
+    `\u7F3A\u5C11\u6216\u975E\u6CD5 agent\u3002\u5141\u8BB8\u503C\uFF1A${AGENT_ROLES.join(", ")}\uFF08\u4EA6\u63A5\u53D7 harness-<role> \u524D\u7F00\uFF09`
+  );
+}
+function normalizeEvent(value) {
+  if (value === "started" || value === "completed") {
+    return value;
+  }
+  throw new Error("\u7F3A\u5C11\u6216\u975E\u6CD5 event\u3002\u5141\u8BB8\u503C\uFF1Astarted, completed");
+}
+async function runHostAgentEvent(flags, positionals) {
+  const workDir = process.cwd();
+  const agent = normalizeAgent(readStringFlag2(flags, "agent") || positionals[0] || "");
+  const event = normalizeEvent(readStringFlag2(flags, "event") || positionals[1] || "started");
+  const activeTaskId = await readActiveTaskId(workDir);
+  const taskId = readStringFlag2(flags, "task-id") || activeTaskId || null;
+  const model = readStringFlag2(flags, "model") || null;
+  await appendHarnessEvent(workDir, {
+    type: `subagent.${event}`,
+    role: agent,
+    agent: `harness-${agent}`,
+    taskId,
+    model
+  });
+  printJson({
+    recorded: true,
+    type: `subagent.${event}`,
+    role: agent,
+    agent: `harness-${agent}`,
+    taskId,
+    model
+  });
+}
+
+// src/commands/host/artifact-guard.ts
+import { resolve } from "path";
+import { checkWritePermission } from "@harnessly/core";
+function readStringFlag3(flags, name) {
+  const value = flags[name];
+  return typeof value === "string" ? value : "";
+}
+async function runHostArtifactGuard(flags) {
+  const cwd = process.cwd();
+  let filePath = readStringFlag3(flags, "file");
+  const taskId = readStringFlag3(flags, "task-id") || void 0;
+  if (!filePath) {
+    process.stdout.write(JSON.stringify({ allowed: false, reason: "\u7F3A\u5C11 --file \u53C2\u6570" }));
+    return;
+  }
+  filePath = resolve(cwd, filePath);
+  const result = await checkWritePermission(cwd, filePath, taskId);
+  process.stdout.write(`${JSON.stringify(result)}
+`);
+}
+
 // src/commands/host/completion-gate.ts
-import { access, readFile as readFile2 } from "fs/promises";
-import path4 from "path";
+import { access, readFile as readFile3 } from "fs/promises";
+import path5 from "path";
 import {
   collectChangedFiles,
   collectEnabledRoles,
@@ -454,7 +692,7 @@ async function fileExists(filePath) {
 }
 async function loadReportCommitReady(filePath) {
   try {
-    const report = JSON.parse(await readFile2(filePath, "utf8"));
+    const report = JSON.parse(await readFile3(filePath, "utf8"));
     return report.commitReady ?? null;
   } catch {
     return null;
@@ -462,7 +700,7 @@ async function loadReportCommitReady(filePath) {
 }
 async function loadContractIfExists(filePath) {
   try {
-    return parseContract(await readFile2(filePath, "utf8"));
+    return parseContract(await readFile3(filePath, "utf8"));
   } catch {
     return null;
   }
@@ -471,9 +709,9 @@ function isCompletionClaim(message) {
   return /(完成|done|fixed|已修复|搞定|完成了)/i.test(message);
 }
 async function countPreviousBlocks(workDir, taskId) {
-  const eventsFile = path4.join(getHarnessPaths3(workDir).harnessDir, "events.jsonl");
+  const eventsFile = path5.join(getHarnessPaths3(workDir).harnessDir, "events.jsonl");
   try {
-    const text = await readFile2(eventsFile, "utf8");
+    const text = await readFile3(eventsFile, "utf8");
     let count = 0;
     for (const line of text.split(/\r?\n/)) {
       if (line.includes('"type":"host.completion_gate_blocked"') && line.includes(`"activeTaskId":"${taskId}"`)) {
@@ -512,8 +750,8 @@ async function runHostCompletionGate(flags, positionals) {
     return;
   }
   const paths = getHarnessPaths3(workDir);
-  const reportFile = path4.join(paths.tasksDir, activeTaskId, "report.json");
-  const contractFile = path4.join(paths.tasksDir, activeTaskId, "contract.yaml");
+  const reportFile = path5.join(paths.tasksDir, activeTaskId, "report.json");
+  const contractFile = path5.join(paths.tasksDir, activeTaskId, "contract.yaml");
   const evalCommand = `harnessly eval ${activeTaskId}`;
   const changedFiles = await collectChangedFiles(workDir);
   const contract = await loadContractIfExists(contractFile);
@@ -627,50 +865,6 @@ async function runHostCompletionGate(flags, positionals) {
   });
 }
 
-// src/commands/host/agent-event.ts
-import { AGENT_ROLES } from "@harnessly/core";
-function readStringFlag2(flags, name) {
-  return typeof flags[name] === "string" ? flags[name].trim() : "";
-}
-function normalizeAgent(value) {
-  const stripped = value.startsWith("harness-") ? value.slice("harness-".length) : value;
-  if (AGENT_ROLES.includes(stripped)) {
-    return stripped;
-  }
-  throw new Error(
-    `\u7F3A\u5C11\u6216\u975E\u6CD5 agent\u3002\u5141\u8BB8\u503C\uFF1A${AGENT_ROLES.join(", ")}\uFF08\u4EA6\u63A5\u53D7 harness-<role> \u524D\u7F00\uFF09`
-  );
-}
-function normalizeEvent(value) {
-  if (value === "started" || value === "completed") {
-    return value;
-  }
-  throw new Error("\u7F3A\u5C11\u6216\u975E\u6CD5 event\u3002\u5141\u8BB8\u503C\uFF1Astarted, completed");
-}
-async function runHostAgentEvent(flags, positionals) {
-  const workDir = process.cwd();
-  const agent = normalizeAgent(readStringFlag2(flags, "agent") || positionals[0] || "");
-  const event = normalizeEvent(readStringFlag2(flags, "event") || positionals[1] || "started");
-  const activeTaskId = await readActiveTaskId(workDir);
-  const taskId = readStringFlag2(flags, "task-id") || activeTaskId || null;
-  const model = readStringFlag2(flags, "model") || null;
-  await appendHarnessEvent(workDir, {
-    type: `subagent.${event}`,
-    role: agent,
-    agent: `harness-${agent}`,
-    taskId,
-    model
-  });
-  printJson({
-    recorded: true,
-    type: `subagent.${event}`,
-    role: agent,
-    agent: `harness-${agent}`,
-    taskId,
-    model
-  });
-}
-
 // src/commands/host/install.ts
 async function runHostInstall(flags) {
   const requestedHost = typeof flags.host === "string" ? flags.host : "auto";
@@ -680,6 +874,35 @@ async function runHostInstall(flags) {
     `- host: ${requestedHost}`,
     `- files: ${installedPaths.length > 0 ? installedPaths.join(", ") : "none"}`
   ]);
+}
+
+// src/commands/host/resident-review.ts
+import { runResidentReview } from "@harnessly/core";
+function readStringFlag4(flags, name) {
+  const value = flags[name];
+  return typeof value === "string" ? value : "";
+}
+async function runHostResidentReview(flags) {
+  const workDir = process.cwd();
+  const trigger = readStringFlag4(flags, "trigger");
+  if (!trigger || !["pre_push", "pre_merge", "on_demand"].includes(trigger)) {
+    throw new Error("--trigger \u5FC5\u987B\u4E3A pre_push\u3001pre_merge \u6216 on_demand");
+  }
+  const taskId = readStringFlag4(flags, "task-id") || void 0;
+  const result = await runResidentReview(workDir, trigger, taskId);
+  if (flags.json) {
+    printJson(result);
+    return;
+  }
+  printLines([
+    `\u5E38\u9A7B review \u5B8C\u6210 (trigger: ${trigger})`,
+    `- spawned agents: ${result.agentsSpawned.join(", ") || "(none)"}`,
+    `- findings: ${result.findings.length}`,
+    `- blocking: ${result.hadBlockingFinding}`
+  ]);
+  if (result.hadBlockingFinding) {
+    process.exit(1);
+  }
 }
 
 // src/commands/host/session-start.ts
@@ -758,15 +981,15 @@ import {
 } from "@harnessly/core";
 
 // src/utils/planner-fallback.ts
-import { readFile as readFile3, writeFile as writeFile3, unlink as unlink2 } from "fs/promises";
-import path5 from "path";
+import { readFile as readFile4, writeFile as writeFile3, unlink as unlink2 } from "fs/promises";
+import path6 from "path";
 import { getHarnessPaths as getHarnessPaths4 } from "@harnessly/core";
 function getPendingFile(workDir) {
-  return path5.join(getHarnessPaths4(workDir).harnessDir, "pending-planner-delegation.json");
+  return path6.join(getHarnessPaths4(workDir).harnessDir, "pending-planner-delegation.json");
 }
 async function readPendingDelegation(workDir) {
   try {
-    return JSON.parse(await readFile3(getPendingFile(workDir), "utf8"));
+    return JSON.parse(await readFile4(getPendingFile(workDir), "utf8"));
   } catch {
     return null;
   }
@@ -1414,8 +1637,10 @@ function printUsage() {
       "  harnessly run --resume <task-id>",
       '  harnessly run [--skip-confirm] --adapter custom|codex --adapter-command "<cmd>" "<goal>"',
       "  harnessly template promote [task-id] [--name <template-name>]",
-      "  harnessly archive requirement|design|both <task-id> [--topic <name>] [--force]",
-      "  harnessly archive requirement|design|both --latest [--topic <name>] [--force]",
+      "  harnessly archive promote <task-id> --topic=<slug> --files=<list> [--mode=<mode>] [--json]",
+      "  harnessly archive list [--json]",
+      "  harnessly archive show <topic> [--json]",
+      "  harnessly archive verify [--json]",
       "  harnessly evidence baseline [--show] [--clear] [--json]",
       "  harnessly feedback list",
       "  harnessly feedback promote <task-id> [reason]",
@@ -1425,7 +1650,9 @@ function printUsage() {
       "  harnessly host session-start",
       '  harnessly host user-prompt-submit [--prompt "..."]',
       '  harnessly host completion-gate [--message "..."]',
-      "  harnessly host agent-event --agent harness-planner|harness-evaluator [--event started|completed] [--task-id <task-id>] [--model <model>]"
+      "  harnessly host agent-event --agent harness-planner|harness-evaluator [--event started|completed] [--task-id <task-id>] [--model <model>]",
+      "  harnessly host artifact-guard --file <path> [--task-id <id>]",
+      "  harnessly host resident-review --trigger <pre_push|pre_merge> [--task-id <id>]"
     ].join("\n") + "\n"
   );
 }
@@ -1498,6 +1725,12 @@ async function runCli(argv) {
         return;
       case "agent-event":
         await runHostAgentEvent(parsed.flags, rest);
+        return;
+      case "artifact-guard":
+        await runHostArtifactGuard(parsed.flags);
+        return;
+      case "resident-review":
+        await runHostResidentReview(parsed.flags);
         return;
       default:
         printUsage();

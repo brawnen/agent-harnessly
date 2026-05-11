@@ -43,6 +43,8 @@ __export(index_exports, {
   TemplateRegistry: () => TemplateRegistry,
   WorkflowEngine: () => WorkflowEngine,
   appendFeedbackEntry: () => appendFeedbackEntry,
+  appendToHarnessMeta: () => appendToHarnessMeta,
+  applyPromotion: () => applyPromotion,
   archiveTaskArtifacts: () => archiveTaskArtifacts,
   assemblePrompt: () => assemblePrompt,
   buildBaselineDiff: () => buildBaselineDiff,
@@ -50,6 +52,7 @@ __export(index_exports, {
   buildEvidenceSnapshot: () => buildEvidenceSnapshot,
   buildFeedbackEntry: () => buildFeedbackEntry,
   checkContract: () => checkContract,
+  checkWritePermission: () => checkWritePermission,
   collectChangedFiles: () => collectChangedFiles,
   collectEnabledRoles: () => collectEnabledRoles,
   collectEvidence: () => collectEvidence,
@@ -75,31 +78,37 @@ __export(index_exports, {
   getEvidenceBaselinePath: () => getEvidenceBaselinePath,
   getFeedbackHistoryPath: () => getFeedbackHistoryPath,
   getFeedbackPoolPath: () => getFeedbackPoolPath,
+  getHarnessMetaPath: () => getHarnessMetaPath,
   getHarnessPaths: () => getHarnessPaths,
   getRoleForStage: () => getRoleForStage,
   getSkillPath: () => getSkillPath,
   getTaskEvidenceDir: () => getTaskEvidenceDir,
   getTaskEvidencePath: () => getTaskEvidencePath,
+  groupFindingsBySimilarity: () => groupFindingsBySimilarity,
   listAgentFiles: () => listAgentFiles,
+  listArchiveTopics: () => listArchiveTopics,
   loadAgentManifest: () => loadAgentManifest,
   loadAgentManifests: () => loadAgentManifests,
   loadEvidenceBaseline: () => loadEvidenceBaseline,
   loadFeedbackPool: () => loadFeedbackPool,
   loadHarnessConfig: () => loadHarnessConfig,
+  loadHarnessMeta: () => loadHarnessMeta,
   loadSkill: () => loadSkill,
   matchTemplate: () => matchTemplate,
+  moveFindingsToHistory: () => moveFindingsToHistory,
   parseHarnessConfig: () => parseHarnessConfig,
   pickRecentEntries: () => pickRecentEntries,
   pickRecommendedAgent: () => pickRecommendedAgent,
   promoteFeedbackEntry: () => promoteFeedbackEntry,
+  promoteTaskArtifacts: () => promoteTaskArtifacts,
   renderFeedbackEntriesAsLines: () => renderFeedbackEntriesAsLines,
-  renderGlobalRulesTemplate: () => renderGlobalRulesTemplate,
   renderResidentReview: () => renderResidentReview,
   renderReviewAgentsTemplate: () => renderReviewAgentsTemplate,
   renderSkillTemplate: () => renderSkillTemplate,
   renderStructureRulesTemplate: () => renderStructureRulesTemplate,
   runArtifactGuard: () => runArtifactGuard,
   runLevel2Validation: () => runLevel2Validation,
+  runResidentReview: () => runResidentReview,
   runReviewStage: () => runReviewStage,
   runScopeCheck: () => runScopeCheck,
   runSkillCheck: () => runSkillCheck,
@@ -107,8 +116,11 @@ __export(index_exports, {
   saveBaselineDiff: () => saveBaselineDiff,
   saveEvidenceBaseline: () => saveEvidenceBaseline,
   saveEvidenceSnapshot: () => saveEvidenceSnapshot,
+  saveHarnessMeta: () => saveHarnessMeta,
   saveTemplateDraft: () => saveTemplateDraft,
   serializeHarnessConfig: () => serializeHarnessConfig,
+  showArchiveTopic: () => showArchiveTopic,
+  verifyArchive: () => verifyArchive,
   writeDefaultAgentManifests: () => writeDefaultAgentManifests,
   writeDefaultSkillManifests: () => writeDefaultSkillManifests,
   writeFileIfChanged: () => writeFileIfChanged,
@@ -220,7 +232,6 @@ function getHarnessPaths(workDir) {
     configFile: import_node_path2.default.join(harnessDir, "harness.config.yaml"),
     structureRulesFile: import_node_path2.default.join(harnessDir, "structure-rules.yaml"),
     reviewAgentsFile: import_node_path2.default.join(harnessDir, "review-agents.yaml"),
-    globalRulesFile: import_node_path2.default.join(harnessDir, "GLOBAL_RULES.md"),
     activeTaskFile: import_node_path2.default.join(harnessDir, "active-task.txt")
   };
 }
@@ -260,18 +271,6 @@ async function ensureHarnessDirectories(workDir) {
   await (0, import_promises2.mkdir)(paths.templatesDir, { recursive: true });
   await (0, import_promises2.mkdir)(paths.skillsDir, { recursive: true });
   return paths;
-}
-function renderGlobalRulesTemplate() {
-  return [
-    "# GLOBAL_RULES",
-    "",
-    "\u5728\u8FD9\u91CC\u586B\u5199\u5F53\u524D\u4ED3\u5E93\u7684\u957F\u671F\u7A33\u5B9A\u89C4\u5219\u3002",
-    "",
-    "- \u53EA\u5199 repo \u7EA7\u4E8B\u5B9E\uFF0C\u4E0D\u5199\u4E2A\u4EBA\u7EA7\u4E60\u60EF",
-    "- \u53EA\u5199\u957F\u671F\u7A33\u5B9A\u7EA6\u675F\uFF0C\u4E0D\u5199\u4E00\u6B21\u6027\u4EFB\u52A1\u8BF4\u660E",
-    "- \u4EE3\u7801\u9A8C\u8BC1\u547D\u4EE4\u3001\u4EA4\u4ED8\u95E8\u7981\u3001\u76EE\u5F55\u7EA6\u5B9A\u4F18\u5148\u5199\u5728\u8FD9\u91CC",
-    ""
-  ].join("\n");
 }
 async function writeFileIfChanged(filePath, content, force = false) {
   try {
@@ -747,6 +746,154 @@ async function promoteFeedbackEntry(workDir, taskId, reason = "manual promotion"
   );
   return entry;
 }
+function trigramSimilarity(a, b) {
+  const trigrams = (s) => {
+    const result = /* @__PURE__ */ new Set();
+    const lower = s.toLowerCase();
+    for (let i = 0; i < lower.length - 2; i += 1) {
+      result.add(lower.slice(i, i + 3));
+    }
+    return result;
+  };
+  const ta = trigrams(a);
+  const tb = trigrams(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  const intersection = new Set([...ta].filter((t) => tb.has(t)));
+  const union = /* @__PURE__ */ new Set([...ta, ...tb]);
+  return intersection.size / union.size;
+}
+function groupFindingsBySimilarity(findings, similarityThreshold = 0.6) {
+  const groups = [];
+  const assigned = /* @__PURE__ */ new Set();
+  for (const finding of findings) {
+    if (assigned.has(finding.id)) continue;
+    const group = [finding];
+    assigned.add(finding.id);
+    for (const other of findings) {
+      if (assigned.has(other.id)) continue;
+      if (other.category !== finding.category) continue;
+      if (trigramSimilarity(finding.summary, other.summary) >= similarityThreshold) {
+        group.push(other);
+        assigned.add(other.id);
+      }
+    }
+    let suggestedTargets = group[0].promotable_as;
+    for (let i = 1; i < group.length; i += 1) {
+      suggestedTargets = suggestedTargets.filter(
+        (target) => group[i].promotable_as.includes(target)
+      );
+    }
+    groups.push({
+      category: finding.category,
+      summary: finding.summary,
+      count: group.length,
+      findings: group,
+      suggestedTargets
+    });
+  }
+  return groups.sort((a, b) => b.count - a.count);
+}
+async function applyPromotion(workDir, action) {
+  const paths = getHarnessPaths(workDir);
+  const detail = action.group.findings.map((f) => f.summary).join("; ");
+  switch (action.target) {
+    case "lint":
+    case "structure_rule": {
+      const rulesPath = paths.structureRulesFile;
+      let existing = "";
+      try {
+        existing = await (0, import_promises4.readFile)(rulesPath, "utf8");
+      } catch {
+      }
+      const entry = [
+        "",
+        `# \u4ECE feedback-pool \u664B\u5347\uFF08${action.group.category}, \u51FA\u73B0 ${action.group.count} \u6B21\uFF09`,
+        `unique_implementations:`,
+        `  - pattern: "**/*.ts"`,
+        `    rule: "${action.group.summary}"`,
+        `    fix_hint: "${action.group.findings[0]?.fix_hint ?? "\u68C0\u67E5\u5E76\u4FEE\u590D"}"`,
+        ""
+      ].join("\n");
+      await (0, import_promises4.writeFile)(rulesPath, `${existing}${entry}`, "utf8");
+      return `\u5DF2\u8FFD\u52A0 structure-rule\uFF08${action.group.category}, ${action.group.count} \u6B21\uFF09`;
+    }
+    case "review_prompt": {
+      const agentsPath = paths.reviewAgentsFile;
+      let existing = "";
+      try {
+        existing = await (0, import_promises4.readFile)(agentsPath, "utf8");
+      } catch {
+      }
+      const entry = [
+        "",
+        `  - name: auto-promoted-${action.group.category}`,
+        `    triggers: [pre_merge]`,
+        `    model: gpt-5.5`,
+        `    blocking_severity: P1`,
+        `    prompt: |`,
+        `      \u68C0\u67E5\uFF1A${action.group.summary}\uFF08\u4ECE feedback-pool \u81EA\u52A8\u664B\u5347\uFF0C\u51FA\u73B0 ${action.group.count} \u6B21\uFF09\u3002`,
+        ""
+      ].join("\n");
+      await (0, import_promises4.writeFile)(agentsPath, `${existing}${entry}`, "utf8");
+      return `\u5DF2\u8FFD\u52A0 review-agent\uFF08${action.group.category}, ${action.group.count} \u6B21\uFF09`;
+    }
+    case "skill_fix_hint": {
+      const skillDir = paths.skillsDir;
+      const hintContent = [
+        `# \u4ECE feedback-pool \u664B\u5347\u7684 fix_hint\uFF08${action.group.category}\uFF09`,
+        `# \u51FA\u73B0 ${action.group.count} \u6B21: ${detail}`,
+        `fix_hint: "${action.group.findings[0]?.fix_hint ?? "\u68C0\u67E5\u5E76\u4FEE\u590D"}"`,
+        ""
+      ].join("\n");
+      const hintPath = import_node_path4.default.join(skillDir, "promoted-fix-hints.yaml");
+      let existing = "";
+      try {
+        existing = await (0, import_promises4.readFile)(hintPath, "utf8");
+      } catch {
+      }
+      await (0, import_promises4.writeFile)(hintPath, `${existing}${hintContent}`, "utf8");
+      return `\u5DF2\u8FFD\u52A0 skill fix_hint\uFF08${action.group.category}, ${action.group.count} \u6B21\uFF09`;
+    }
+    case "failed_test": {
+      const testDir = import_node_path4.default.join(workDir, "packages", "core", "src");
+      const testName = `auto-promoted-${action.group.category}-${action.group.count}`;
+      const testContent = [
+        `// \u4ECE feedback-pool \u81EA\u52A8\u664B\u5347\uFF08${action.group.category}, \u51FA\u73B0 ${action.group.count} \u6B21\uFF09`,
+        `import { describe, it, expect } from 'vitest';`,
+        "",
+        `describe('auto-promoted: ${action.group.summary}', () => {`,
+        `  it.fails('TODO: \u5B9E\u73B0\u4FEE\u590D\u4F7F\u6B64\u6D4B\u8BD5\u901A\u8FC7', () => {`,
+        `    // ${action.group.findings.map((f) => f.fix_hint).join("; ")}`,
+        `    expect(true).toBe(false);`,
+        `  });`,
+        `});`,
+        ""
+      ].join("\n");
+      await (0, import_promises4.writeFile)(import_node_path4.default.join(testDir, `${testName}.test.ts`), testContent, "utf8");
+      return `\u5DF2\u751F\u6210\u5931\u8D25\u6D4B\u8BD5\uFF08${action.group.category}, ${action.group.count} \u6B21\uFF09\uFF1A${testName}.test.ts`;
+    }
+    case "dismiss":
+      return `\u5DF2 dismiss\uFF08${action.group.category}, ${action.group.count} \u6B21\uFF09`;
+    default:
+      return `\u672A\u77E5\u664B\u5347\u76EE\u6807\uFF1A${action.target}`;
+  }
+}
+async function moveFindingsToHistory(workDir, action) {
+  const historyPath = getFeedbackHistoryPath(workDir);
+  const entry = [
+    `## ${(/* @__PURE__ */ new Date()).toISOString()} auto-promotion`,
+    "",
+    `- target: ${action.target}`,
+    `- category: ${action.group.category}`,
+    `- summary: ${action.group.summary}`,
+    `- count: ${action.group.count}`,
+    `- finding_ids: ${action.group.findings.map((f) => f.id).join(", ")}`,
+    ""
+  ].join("\n");
+  await (0, import_promises4.mkdir)(import_node_path4.default.dirname(historyPath), { recursive: true });
+  await (0, import_promises4.appendFile)(historyPath, `${entry}
+`, "utf8");
+}
 
 // src/task.ts
 function createInitialTaskState(taskId) {
@@ -942,6 +1089,24 @@ var TaskManager = class {
     ctx.feedback = feedback;
     await (0, import_promises5.writeFile)(this.getFeedbackFile(ctx.taskDir), feedback, "utf8");
   }
+  /**
+   * 向 commit-summary.md 追加一个小节。用于声明式晋升等场景记录。
+   * best-effort：写入失败不抛。
+   */
+  async appendCommitSummarySection(ctx, heading, content) {
+    const filePath = import_node_path5.default.join(ctx.taskDir, "commit-summary.md");
+    try {
+      const existing = await (0, import_promises5.readFile)(filePath, "utf8").catch(
+        (error) => isMissingFileError3(error) ? "" : Promise.reject(error)
+      );
+      const section = `${heading}
+${content}
+`;
+      await (0, import_promises5.writeFile)(filePath, `${existing}${existing ? "\n" : ""}${section}
+`, "utf8");
+    } catch {
+    }
+  }
   async clearFeedback(ctx) {
     ctx.feedback = void 0;
     try {
@@ -1062,30 +1227,19 @@ var TaskManager = class {
 
 // src/archive.ts
 var DEFAULT_TOPIC = "tasks";
+var AUTO_START = "<!-- harness:auto-start -->";
+var AUTO_END = "<!-- harness:auto-end -->";
 function isMissingFileError4(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function fileExists2(filePath) {
   try {
-    await (0, import_promises6.readFile)(filePath);
+    await (0, import_promises6.access)(filePath);
     return true;
   } catch (error) {
     if (isMissingFileError4(error)) return false;
     throw error;
   }
-}
-async function copyIfMissingOrForced(source, target, force) {
-  const exists2 = await fileExists2(target);
-  if (!exists2) {
-    await (0, import_promises6.mkdir)(import_node_path6.default.dirname(target), { recursive: true });
-    await (0, import_promises6.copyFile)(source, target);
-    return "created";
-  }
-  if (!force) {
-    return "skipped";
-  }
-  await (0, import_promises6.copyFile)(source, target);
-  return "updated";
 }
 function pickFilesByKind(kind) {
   return {
@@ -1099,52 +1253,287 @@ function readTaskReportSafe(filePath) {
     return null;
   });
 }
-function renderArchiveReadme(args) {
-  const { taskId, goal, archivedAt, archivedKind, topic, report, completedStages, retryCount } = args;
-  const lines = [
-    `# Task Archive: ${goal}`,
-    "",
-    "## Metadata",
-    `- task_id: ${taskId}`,
-    `- topic: ${topic}`,
-    `- archived_at: ${archivedAt}`,
-    `- archived_kind: ${archivedKind}`,
-    `- completed_stages: ${completedStages.join(", ") || "(none)"}`,
-    `- retry_count: ${retryCount}`
-  ];
-  if (report) {
-    lines.push(
-      `- decision: ${report.commitGate.decision}`,
-      `- commit_ready: ${report.commitReady}`,
-      `- changed_files_count: ${report.evidence.changedFiles.length}`
-    );
-  } else {
-    lines.push("- decision: (no report available)");
+function getHarnessMetaPath(topicDir) {
+  return import_node_path6.default.join(topicDir, "_harness-meta.json");
+}
+async function loadHarnessMeta(topicDir) {
+  try {
+    const text = await (0, import_promises6.readFile)(getHarnessMetaPath(topicDir), "utf8");
+    return import_shared5.harnessMetaFileSchema.parse(JSON.parse(text));
+  } catch (error) {
+    if (isMissingFileError4(error)) return null;
+    return null;
   }
-  lines.push("", "## Files");
-  if (archivedKind === "requirement" || archivedKind === "both") {
-    lines.push("- `contract.yaml` \u2014 SPEC \u9636\u6BB5\u4EA7\u51FA\uFF08v3-core requirement \u5DE5\u4EF6\uFF09");
-  }
-  if (archivedKind === "design" || archivedKind === "both") {
-    lines.push("- `plan.md` \u2014 DESIGN \u9636\u6BB5\u4EA7\u51FA\uFF08v3-core design \u5DE5\u4EF6\uFF09");
-  }
-  lines.push(
-    "",
-    "## Source",
-    `Snapshot of \`.harness/tasks/${taskId}/\` at \`${archivedAt}\`.`,
-    "",
-    "> \u7531 `harnessly archive` \u547D\u4EE4\u751F\u6210\u3002\u5982\u9700\u66F4\u65B0\uFF0C\u91CD\u8DD1 `harnessly archive ... --force`\u3002",
-    ""
+}
+async function saveHarnessMeta(topicDir, meta) {
+  await (0, import_promises6.mkdir)(topicDir, { recursive: true });
+  await (0, import_promises6.writeFile)(
+    getHarnessMetaPath(topicDir),
+    `${JSON.stringify(meta, null, 2)}
+`,
+    "utf8"
   );
-  return lines.join("\n");
+}
+function appendToHarnessMeta(existing, topic, entry) {
+  if (existing) {
+    return {
+      ...existing,
+      source_tasks: [...existing.source_tasks, entry]
+    };
+  }
+  return {
+    topic,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    harness_version: "v3-core",
+    source_tasks: [entry]
+  };
+}
+function resolveFlatTargetName(sourceFile) {
+  const base = import_node_path6.default.basename(sourceFile);
+  if (base === "contract.yaml" || base === "requirement.md") return "requirement.md";
+  if (base === "plan.md" || base === "design.md") return "design.md";
+  return base;
+}
+async function resolveTargetPath(topicDir, sourceFile, mode, force) {
+  const baseName = resolveFlatTargetName(sourceFile);
+  const primaryTarget = import_node_path6.default.join(topicDir, baseName);
+  if (mode === "new_topic" && !force) {
+    if (await fileExists2(primaryTarget)) {
+      throw new Error(
+        `new_topic \u6A21\u5F0F\uFF1A\u76EE\u6807\u6587\u4EF6 ${baseName} \u5DF2\u5B58\u5728\u4E8E ${topicDir}\uFF0C\u7981\u6B62\u8986\u76D6\u3002\u4F7F\u7528 mode=append \u6216 mode=replace\u3002`
+      );
+    }
+  }
+  if (mode === "append") {
+    if (await fileExists2(primaryTarget)) {
+      const parsed = import_node_path6.default.parse(baseName);
+      let v = 2;
+      let altTarget;
+      do {
+        altTarget = import_node_path6.default.join(topicDir, `${parsed.name}-v${v}${parsed.ext}`);
+        v += 1;
+      } while (await fileExists2(altTarget));
+      return altTarget;
+    }
+  }
+  if (mode === "replace" && await fileExists2(primaryTarget)) {
+    const archiveDir = import_node_path6.default.join(topicDir, "_archive", (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-"));
+    await (0, import_promises6.mkdir)(archiveDir, { recursive: true });
+    await (0, import_promises6.copyFile)(primaryTarget, import_node_path6.default.join(archiveDir, baseName));
+  }
+  return primaryTarget;
+}
+function renderAutoReadme(args) {
+  const { topic, meta } = args;
+  const files = /* @__PURE__ */ new Set();
+  for (const task of meta.source_tasks) {
+    for (const file of task.promoted_files) {
+      files.add(file);
+    }
+  }
+  const lastPromoted = meta.source_tasks.length > 0 ? meta.source_tasks[meta.source_tasks.length - 1].promoted_at : meta.created_at;
+  return [
+    `# ${topic}`,
+    "",
+    `- \u521B\u5EFA\u65E5\u671F\uFF1A${meta.created_at}`,
+    `- \u6700\u540E\u664B\u5347\uFF1A${lastPromoted}`,
+    `- \u6765\u6E90\u4EFB\u52A1\u6570\uFF1A${meta.source_tasks.length}`,
+    "",
+    "## \u6587\u4EF6",
+    ...[...files].sort().map((file) => `- \`${file}\``),
+    "",
+    "## \u6765\u6E90\u4EFB\u52A1",
+    ...meta.source_tasks.map(
+      (task) => `- \`${task.task_id}\` ${task.goal}\uFF08${task.promotion_mode}, ${task.promoted_at}\uFF09`
+    ),
+    ""
+  ].join("\n");
+}
+async function writeReadme(topicDir, topic, meta) {
+  const readmePath = import_node_path6.default.join(topicDir, "README.md");
+  const autoContent = renderAutoReadme({ topic, meta });
+  let existingBefore = "";
+  let existingAfter = "";
+  try {
+    const existing = await (0, import_promises6.readFile)(readmePath, "utf8");
+    const autoStartIndex = existing.indexOf(AUTO_START);
+    const autoEndIndex = existing.indexOf(AUTO_END);
+    if (autoStartIndex !== -1 && autoEndIndex !== -1) {
+      existingBefore = existing.slice(0, autoStartIndex + AUTO_START.length);
+      existingAfter = existing.slice(autoEndIndex);
+    } else {
+      existingBefore = AUTO_START;
+      existingAfter = `${AUTO_END}
+
+${existing}`;
+    }
+  } catch (error) {
+    if (!isMissingFileError4(error)) throw error;
+    existingBefore = `${AUTO_START}`;
+    existingAfter = `
+${AUTO_END}`;
+  }
+  await (0, import_promises6.mkdir)(topicDir, { recursive: true });
+  await (0, import_promises6.writeFile)(
+    readmePath,
+    `${existingBefore}
+${autoContent}
+${existingAfter}`,
+    "utf8"
+  );
+}
+async function promoteTaskArtifacts(workDir, taskId, options) {
+  const topic = options.topic.trim() || DEFAULT_TOPIC;
+  const mode = options.mode ?? "new_topic";
+  const archDir = import_node_path6.default.join(workDir, "docs", "architecture");
+  const topicDir = import_node_path6.default.join(archDir, topic);
+  const ctx = await new TaskManager().load(taskId, workDir);
+  if (mode === "new_topic" && await fileExists2(topicDir)) {
+    const existingMeta = await loadHarnessMeta(topicDir);
+    if (existingMeta && existingMeta.source_tasks.length > 0) {
+      throw new Error(
+        `new_topic \u6A21\u5F0F\uFF1Atopic "${topic}" \u5DF2\u5B58\u5728\u4E14\u6709 ${existingMeta.source_tasks.length} \u6761\u6765\u6E90\u4EFB\u52A1\u3002\u4F7F\u7528 --mode=append \u6216 --mode=replace\u3002`
+      );
+    }
+  }
+  const files = [];
+  const promotedFiles = [];
+  for (const sourceFile of options.files) {
+    const source = import_node_path6.default.join(ctx.taskDir, sourceFile);
+    if (!await fileExists2(source)) {
+      throw new Error(`task ${taskId} \u7F3A\u5C11\u6E90\u6587\u4EF6\uFF1A${sourceFile}`);
+    }
+    const target = await resolveTargetPath(topicDir, sourceFile, mode, false);
+    const targetExisted = await fileExists2(target);
+    await (0, import_promises6.mkdir)(import_node_path6.default.dirname(target), { recursive: true });
+    await (0, import_promises6.copyFile)(source, target);
+    const resolvedName = import_node_path6.default.basename(target);
+    files.push({
+      source,
+      target,
+      status: targetExisted && mode === "replace" ? "updated" : "created",
+      versionSuffix: resolvedName !== resolveFlatTargetName(sourceFile) ? resolvedName : void 0
+    });
+    promotedFiles.push(resolvedName);
+  }
+  if (!options.skipMeta) {
+    const existingMeta = await loadHarnessMeta(topicDir);
+    const entry = {
+      task_id: taskId,
+      goal: ctx.goal,
+      promoted_files: [...new Set(promotedFiles)],
+      promoted_at: (/* @__PURE__ */ new Date()).toISOString(),
+      promotion_mode: mode
+    };
+    const updatedMeta = appendToHarnessMeta(existingMeta, topic, entry);
+    await saveHarnessMeta(topicDir, updatedMeta);
+    await writeReadme(topicDir, topic, updatedMeta);
+  }
+  return {
+    taskId,
+    topic,
+    targetDir: topicDir,
+    files
+  };
+}
+async function listDirs(dirPath) {
+  const { readdir: readdir3 } = await import("fs/promises");
+  try {
+    const entries = await readdir3(dirPath, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch (error) {
+    if (isMissingFileError4(error)) return [];
+    throw error;
+  }
+}
+async function listArchiveTopics(workDir) {
+  const archDir = import_node_path6.default.join(workDir, "docs", "architecture");
+  const topicNames = await listDirs(archDir);
+  const summaries = [];
+  for (const topic of topicNames) {
+    const topicDir = import_node_path6.default.join(archDir, topic);
+    const meta = await loadHarnessMeta(topicDir);
+    if (!meta) continue;
+    const allFiles = /* @__PURE__ */ new Set();
+    for (const task of meta.source_tasks) {
+      for (const file of task.promoted_files) {
+        allFiles.add(file);
+      }
+    }
+    const lastTask = meta.source_tasks[meta.source_tasks.length - 1];
+    summaries.push({
+      topic,
+      fileCount: allFiles.size,
+      sourceTaskCount: meta.source_tasks.length,
+      lastPromotedAt: lastTask?.promoted_at ?? meta.created_at
+    });
+  }
+  summaries.sort((a, b) => a.topic.localeCompare(b.topic));
+  return summaries;
+}
+async function showArchiveTopic(workDir, topic) {
+  const topicDir = import_node_path6.default.join(workDir, "docs", "architecture", topic);
+  const meta = await loadHarnessMeta(topicDir);
+  if (!meta) return null;
+  let readme = "";
+  try {
+    readme = await (0, import_promises6.readFile)(import_node_path6.default.join(topicDir, "README.md"), "utf8");
+  } catch (error) {
+    if (!isMissingFileError4(error)) throw error;
+  }
+  const allFiles = /* @__PURE__ */ new Set();
+  for (const task of meta.source_tasks) {
+    for (const file of task.promoted_files) {
+      allFiles.add(file);
+    }
+  }
+  return {
+    topic,
+    readme,
+    files: [...allFiles].sort(),
+    sourceTasks: meta.source_tasks
+  };
+}
+async function verifyArchive(workDir) {
+  const archDir = import_node_path6.default.join(workDir, "docs", "architecture");
+  const topicNames = await listDirs(archDir);
+  const results = [];
+  const manager = new TaskManager();
+  for (const topic of topicNames) {
+    const topicDir = import_node_path6.default.join(archDir, topic);
+    const meta = await loadHarnessMeta(topicDir);
+    if (!meta) continue;
+    const orphanTasks = [];
+    for (const task of meta.source_tasks) {
+      try {
+        await manager.load(task.task_id, workDir);
+      } catch {
+        orphanTasks.push(task.task_id);
+      }
+    }
+    results.push({
+      topic,
+      orphanTasks,
+      valid: orphanTasks.length === 0
+    });
+  }
+  return results;
 }
 function getArchiveTargetPaths(workDir, _taskId, topic = DEFAULT_TOPIC) {
   const archDir = import_node_path6.default.join(workDir, "docs", "architecture");
   const topicDir = import_node_path6.default.join(archDir, topic);
-  return {
-    archDir,
-    topicDir
-  };
+  return { archDir, topicDir };
+}
+async function copyIfMissingOrForced(source, target, force) {
+  const exists2 = await fileExists2(target);
+  if (!exists2) {
+    await (0, import_promises6.mkdir)(import_node_path6.default.dirname(target), { recursive: true });
+    await (0, import_promises6.copyFile)(source, target);
+    return "created";
+  }
+  if (!force) return "skipped";
+  await (0, import_promises6.copyFile)(source, target);
+  return "updated";
 }
 async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
   const topic = options.topic?.trim() || DEFAULT_TOPIC;
@@ -1158,9 +1547,7 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
     const source = import_node_path6.default.join(ctx.taskDir, "contract.yaml");
     const requirementSource = import_node_path6.default.join(ctx.taskDir, "requirement.md");
     if (!await fileExists2(source)) {
-      throw new Error(
-        `task ${taskId} \u7F3A\u5C11 contract.yaml\uFF1B\u4E0D\u80FD\u5F52\u6863 requirement \u5DE5\u4EF6\uFF08kind=${kind}\uFF09`
-      );
+      throw new Error(`task ${taskId} \u7F3A\u5C11 contract.yaml`);
     }
     const primarySource = await fileExists2(requirementSource) ? requirementSource : source;
     const target = import_node_path6.default.join(targets.topicDir, `${taskId}.requirement.md`);
@@ -1171,7 +1558,7 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
     const source = import_node_path6.default.join(ctx.taskDir, "plan.md");
     const designSource = import_node_path6.default.join(ctx.taskDir, "design.md");
     if (!await fileExists2(source)) {
-      throw new Error(`task ${taskId} \u7F3A\u5C11 plan.md\uFF1B\u4E0D\u80FD\u5F52\u6863 design \u5DE5\u4EF6\uFF08kind=${kind}\uFF09`);
+      throw new Error(`task ${taskId} \u7F3A\u5C11 plan.md`);
     }
     const primarySource = await fileExists2(designSource) ? designSource : source;
     const target = import_node_path6.default.join(targets.topicDir, `${taskId}.design.md`);
@@ -1180,48 +1567,41 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
   }
   const reportFile = import_node_path6.default.join(ctx.taskDir, "report.json");
   const report = await readTaskReportSafe(reportFile);
-  const readmePath = import_node_path6.default.join(targets.topicDir, "README.md");
-  await (0, import_promises6.mkdir)(targets.topicDir, { recursive: true });
-  const readmeContent = renderArchiveReadme({
-    taskId,
-    goal: ctx.goal,
-    archivedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    archivedKind: kind,
-    topic,
-    report,
-    completedStages: ctx.state.completedStages,
-    retryCount: ctx.state.retryCount
-  });
-  const previousReadme = await (0, import_promises6.readFile)(readmePath, "utf8").catch((error) => {
-    if (isMissingFileError4(error)) return null;
-    throw error;
-  });
-  await (0, import_promises6.writeFile)(readmePath, readmeContent, "utf8");
+  const previousReadme = await (0, import_promises6.readFile)(import_node_path6.default.join(targets.topicDir, "README.md"), "utf8").catch(
+    (error) => isMissingFileError4(error) ? null : Promise.reject(error)
+  );
+  await (0, import_promises6.writeFile)(import_node_path6.default.join(targets.topicDir, "README.md"), [
+    `# Task Archive: ${ctx.goal}`,
+    "",
+    "## Metadata",
+    `- task_id: ${taskId}`,
+    `- topic: ${topic}`,
+    `- archived_at: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+    `- archived_kind: ${kind}`,
+    `- completed_stages: ${ctx.state.completedStages.join(", ") || "(none)"}`,
+    `- retry_count: ${ctx.state.retryCount}`,
+    report ? `- decision: ${report.commitGate.decision}` : "- decision: (no report)",
+    "",
+    "## Files",
+    want.contract ? "- `contract.yaml`" : null,
+    want.plan ? "- `plan.md`" : null,
+    "",
+    "## Source",
+    `Snapshot of \`.harness/tasks/${taskId}/\` at \`${(/* @__PURE__ */ new Date()).toISOString()}\`.`,
+    ""
+  ].filter(Boolean).join("\n"), "utf8");
   files.push({
     source: "(generated)",
-    target: readmePath,
+    target: import_node_path6.default.join(targets.topicDir, "README.md"),
     status: previousReadme === null ? "created" : "updated"
   });
   const metadataPath = import_node_path6.default.join(targets.topicDir, `${taskId}.promotion.json`);
-  const previousMetadata = await (0, import_promises6.readFile)(metadataPath, "utf8").catch((error) => {
-    if (isMissingFileError4(error)) return null;
-    throw error;
-  });
+  const previousMetadata = await (0, import_promises6.readFile)(metadataPath, "utf8").catch(
+    (error) => isMissingFileError4(error) ? null : Promise.reject(error)
+  );
   await (0, import_promises6.writeFile)(
     metadataPath,
-    `${JSON.stringify(
-      {
-        taskId,
-        topic,
-        mode,
-        kind,
-        promotedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        sourceDir: `.harness/tasks/${taskId}`,
-        files: files.map((file) => import_node_path6.default.relative(workDir, file.target))
-      },
-      null,
-      2
-    )}
+    `${JSON.stringify({ taskId, topic, mode, kind, promotedAt: (/* @__PURE__ */ new Date()).toISOString(), sourceDir: `.harness/tasks/${taskId}`, files: files.map((f) => import_node_path6.default.relative(workDir, f.target)) }, null, 2)}
 `,
     "utf8"
   );
@@ -1230,12 +1610,7 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
     target: metadataPath,
     status: previousMetadata === null ? "created" : "updated"
   });
-  return {
-    taskId,
-    topic,
-    targetDir: targets.topicDir,
-    files
-  };
+  return { taskId, topic, targetDir: targets.topicDir, files };
 }
 
 // src/artifact-guard.ts
@@ -1248,6 +1623,9 @@ async function exists(filePath) {
   } catch {
     return false;
   }
+}
+function isMissingFileError5(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 var REQUIRED_TASK_ARTIFACTS = [
   "requirement.md",
@@ -1274,6 +1652,77 @@ async function runArtifactGuard(taskDir) {
     detail: missing.length === 0 ? "\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\u5B8C\u6574" : `\u7F3A\u5C11\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\uFF1A${missing.join(", ")}`,
     fixHint: missing.length === 0 ? void 0 : "\u56DE\u5230\u5BF9\u5E94\u9636\u6BB5\u751F\u6210\u7F3A\u5931\u5DE5\u4EF6\uFF0C\u4E0D\u8981\u53EA\u4F9D\u8D56\u5BF9\u8BDD\u6587\u672C"
   };
+}
+var ARTIFACT_OWNERSHIP = {
+  "requirement.md": "spec",
+  "contract.yaml": "spec",
+  "design.md": "design",
+  "task-breakdown.md": "design",
+  "plan.md": "design",
+  "implementation-notes.md": "execute",
+  "review.md": "review",
+  "resident-review.md": "review",
+  "test-report.md": "test",
+  "evidence/baseline.json": "test",
+  "evidence/current.json": "test",
+  "evidence/baseline-diff.json": "test",
+  "commit-summary.md": "commit_gate",
+  "report.json": "commit_gate"
+};
+var SYSTEM_PATHS = ["docs/architecture/"];
+async function checkWritePermission(workDir, filePath, activeTaskId) {
+  const relative = filePath.startsWith(workDir) ? filePath.slice(workDir.length).replace(/^\//, "") : filePath;
+  for (const sysPath of SYSTEM_PATHS) {
+    if (relative.startsWith(sysPath)) {
+      return {
+        allowed: false,
+        reason: `\u8DEF\u5F84 ${sysPath} \u4EC5 harnessly \u7CFB\u7EDF\u547D\u4EE4\u53EF\u5199\uFF08harness archive promote\uFF09\uFF0Csub-agent \u7981\u6B62\u76F4\u63A5\u5199\u5165`,
+        file: relative
+      };
+    }
+  }
+  const taskMatch = relative.match(/^\.harness\/tasks\/([^/]+)\/(.+)$/);
+  if (!taskMatch) {
+    return { allowed: true, reason: "\u975E\u4EFB\u52A1\u5DE5\u4EF6\u8DEF\u5F84\uFF0C\u653E\u884C", file: relative };
+  }
+  const [, taskId, artifactName] = taskMatch;
+  const resolvedActiveTaskId = activeTaskId ?? await readActiveTaskId(workDir);
+  const requiredStage = ARTIFACT_OWNERSHIP[artifactName];
+  if (!requiredStage) {
+    return { allowed: true, reason: `\u5DE5\u4EF6 ${artifactName} \u4E0D\u5728\u6240\u6709\u6743\u6620\u5C04\u4E2D\uFF0C\u653E\u884C`, file: relative };
+  }
+  const stateFile = import_node_path7.default.join(workDir, ".harness", "tasks", taskId, "state.json");
+  let currentStage;
+  try {
+    const stateText = await (0, import_promises7.readFile)(stateFile, "utf8");
+    const state = JSON.parse(stateText);
+    currentStage = state.currentStage;
+  } catch (error) {
+    if (!isMissingFileError5(error)) throw error;
+    return { allowed: true, reason: "state.json \u4E0D\u5B58\u5728\uFF0C\u653E\u884C", file: relative };
+  }
+  if (!currentStage || resolvedActiveTaskId !== taskId) {
+    return { allowed: true, reason: "\u4EFB\u52A1\u672A\u6307\u5B9A currentStage \u6216\u4E0D\u662F\u5F53\u524D active task", file: relative };
+  }
+  if (currentStage === requiredStage) {
+    return { allowed: true, reason: `\u5F53\u524D\u9636\u6BB5 ${currentStage} \u5339\u914D\u5DE5\u4EF6 ${artifactName}`, file: relative, currentStage, requiredStage };
+  }
+  return {
+    allowed: false,
+    reason: `\u5F53\u524D\u9636\u6BB5 ${currentStage} \u65E0\u6743\u5199\u5165 ${artifactName}\uFF08\u6240\u5C5E\u9636\u6BB5\uFF1A${requiredStage}\uFF09\u3002SPEC \xA710 \u7EAA\u5F8B 1\uFF1A\u4E0B\u6E38\u4E0D\u5F97\u4FEE\u6539\u4E0A\u6E38\u5DE5\u4EF6`,
+    file: relative,
+    currentStage,
+    requiredStage
+  };
+}
+async function readActiveTaskId(workDir) {
+  try {
+    const text = await (0, import_promises7.readFile)(import_node_path7.default.join(workDir, ".harness", "active-task.txt"), "utf8");
+    return text.trim() || void 0;
+  } catch (error) {
+    if (isMissingFileError5(error)) return void 0;
+    throw error;
+  }
 }
 
 // src/contract.ts
@@ -1536,7 +1985,7 @@ var import_node_util = require("util");
 var import_node_path8 = __toESM(require("path"), 1);
 var import_shared7 = require("@harnessly/shared");
 var execAsync = (0, import_node_util.promisify)(import_node_child_process.exec);
-function isMissingFileError5(error) {
+function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function fileExists3(filePath) {
@@ -1544,7 +1993,7 @@ async function fileExists3(filePath) {
     await (0, import_promises8.access)(filePath);
     return true;
   } catch (error) {
-    if (isMissingFileError5(error)) return false;
+    if (isMissingFileError6(error)) return false;
     throw error;
   }
 }
@@ -1826,7 +2275,7 @@ function getTaskEvidenceDir(taskDir) {
 function getTaskEvidencePath(taskDir, kind) {
   return import_node_path10.default.join(getTaskEvidenceDir(taskDir), `${kind}.json`);
 }
-function isMissingFileError6(error) {
+function isMissingFileError7(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function buildEvidenceBaseline(evidence) {
@@ -1888,7 +2337,7 @@ async function loadEvidenceBaseline(workDir) {
   try {
     text = await (0, import_promises10.readFile)(filePath, "utf8");
   } catch (error) {
-    if (isMissingFileError6(error)) return null;
+    if (isMissingFileError7(error)) return null;
     throw error;
   }
   try {
@@ -2340,20 +2789,145 @@ function createTaskReport(ctx, adapter, evidence, commitGate) {
 }
 
 // src/resident-review.ts
+var import_node_child_process5 = require("child_process");
 var import_promises12 = require("fs/promises");
-function isMissingFileError7(error) {
+var import_node_path12 = __toESM(require("path"), 1);
+var import_node_util5 = require("util");
+var execAsync5 = (0, import_node_util5.promisify)(import_node_child_process5.exec);
+function isMissingFileError8(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function loadReviewAgentsConfig(workDir) {
   try {
-    return await (0, import_promises12.readFile)(getHarnessPaths(workDir).reviewAgentsFile, "utf8");
+    const text = await (0, import_promises12.readFile)(getHarnessPaths(workDir).reviewAgentsFile, "utf8");
+    const agents = [];
+    let current = null;
+    for (const line of text.split(/\r?\n/)) {
+      const nameMatch = line.match(/^\s*- name:\s*(.+)$/);
+      if (nameMatch) {
+        if (current?.name) agents.push(current);
+        current = { name: nameMatch[1].trim(), triggers: ["pre_merge"], model: "gpt-5.5", prompt: "", blocking_severity: "P1" };
+        continue;
+      }
+      if (!current) continue;
+      const triggersMatch = line.match(/^\s*triggers:\s*\[(.+)\]$/);
+      if (triggersMatch) {
+        current.triggers = triggersMatch[1].split(",").map((t) => t.trim().replace(/[\[\]'"]/g, ""));
+      }
+      const modelMatch = line.match(/^\s*model:\s*(.+)$/);
+      if (modelMatch) current.model = modelMatch[1].trim();
+      const sevMatch = line.match(/^\s*blocking_severity:\s*(P[012])$/);
+      if (sevMatch) current.blocking_severity = sevMatch[1];
+      const promptMatch = line.match(/^\s*prompt:\s*\|?\s*(.+)$/);
+      if (promptMatch) {
+        current.prompt = (current.prompt || "") + promptMatch[1].trim();
+      }
+    }
+    if (current?.name) agents.push(current);
+    return { review_agents: agents };
   } catch (error) {
-    if (isMissingFileError7(error)) return null;
+    if (isMissingFileError8(error)) return null;
     throw error;
   }
 }
+async function getChangedFiles(workDir) {
+  try {
+    const { stdout } = await execAsync5("git diff --name-only HEAD", { cwd: workDir, env: process.env, shell: "/bin/zsh" });
+    return stdout.trim().split(/\r?\n/).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+async function runResidentReview(workDir, trigger, activeTaskId) {
+  const config = await loadReviewAgentsConfig(workDir);
+  const findings = [];
+  const agentsSpawned = [];
+  if (!config || config.review_agents.length === 0) {
+    return { trigger, findings, hadBlockingFinding: false, agentsSpawned };
+  }
+  const matchingAgents = config.review_agents.filter(
+    (agent) => agent.triggers.includes(trigger)
+  );
+  if (matchingAgents.length === 0) {
+    return { trigger, findings, hadBlockingFinding: false, agentsSpawned };
+  }
+  const changedFiles = await getChangedFiles(workDir);
+  const diffContext = changedFiles.length > 0 ? `\u53D8\u66F4\u6587\u4EF6\uFF1A${changedFiles.join(", ")}` : "\u65E0\u53D8\u66F4\u6587\u4EF6\uFF08\u5168\u91CF\u5BA1\u67E5\uFF09";
+  for (const agent of matchingAgents) {
+    agentsSpawned.push(agent.name);
+    try {
+      const fullPrompt = `${agent.prompt}
+
+\u4E0A\u4E0B\u6587\uFF1A${diffContext}
+\u5DE5\u4F5C\u76EE\u5F55\uFF1A${workDir}`;
+      const { exec: execCmd } = await import("child_process");
+      const { promisify: p } = await import("util");
+      const e = p(execCmd);
+      const harnessBin = `node "${import_node_path12.default.join(workDir, "packages", "cli", "dist", "index.js")}"`;
+      try {
+        await e(`${harnessBin} eval --review`, {
+          cwd: workDir,
+          env: { ...process.env, HARNESS_REVIEW_PROMPT: fullPrompt, HARNESS_REVIEW_TRIGGER: trigger },
+          shell: "/bin/zsh",
+          timeout: 12e4
+        });
+      } catch {
+      }
+    } catch {
+    }
+  }
+  const taskDir = await resolveResidentReviewDir(workDir, activeTaskId);
+  await (0, import_promises12.mkdir)(taskDir, { recursive: true });
+  const reviewMarkdown = renderResidentReviewFromFindings(findings, trigger, agentsSpawned);
+  await (0, import_promises12.writeFile)(import_node_path12.default.join(taskDir, "resident-review.md"), reviewMarkdown, "utf8");
+  const hadBlockingFinding = findings.some((finding) => {
+    const agent = config.review_agents.find((a) => a.name === finding.agent_name);
+    const blockingSev = agent?.blocking_severity ?? "P1";
+    return severityRank(finding.severity) <= severityRank(blockingSev);
+  });
+  return { trigger, findings, hadBlockingFinding, agentsSpawned };
+}
+async function resolveResidentReviewDir(workDir, activeTaskId) {
+  const manager = new TaskManager();
+  const taskId = activeTaskId ?? await readActiveTaskId2(workDir) ?? await manager.getLatestTaskId(workDir);
+  if (taskId) {
+    return import_node_path12.default.join(workDir, ".harness", "tasks", taskId);
+  }
+  return getHarnessPaths(workDir).harnessDir;
+}
+async function readActiveTaskId2(workDir) {
+  try {
+    const text = await (0, import_promises12.readFile)(getHarnessPaths(workDir).activeTaskFile, "utf8");
+    return text.trim() || void 0;
+  } catch (error) {
+    if (isMissingFileError8(error)) return void 0;
+    throw error;
+  }
+}
+function severityRank(severity) {
+  return severity === "P0" ? 0 : severity === "P1" ? 1 : 2;
+}
+function renderResidentReviewFromFindings(findings, trigger, agentsSpawned) {
+  const failed = findings.filter((f) => f.severity === "P0" || f.severity === "P1");
+  return [
+    "# Resident Review",
+    "",
+    "## Config",
+    `- trigger: ${trigger}`,
+    `- agents: ${agentsSpawned.join(", ") || "(none)"}`,
+    "",
+    "## Decision",
+    failed.length > 0 ? "fail" : "pass",
+    "",
+    "## Findings",
+    failed.length === 0 ? "- none" : failed.map((f) => `- [${f.severity}] ${f.agent_name}: ${f.description}`).join("\n"),
+    ""
+  ].join("\n");
+}
 async function renderResidentReview(workDir, findings) {
-  const configText = await loadReviewAgentsConfig(workDir);
+  const configText = await (0, import_promises12.readFile)(getHarnessPaths(workDir).reviewAgentsFile, "utf8").catch(
+    (error) => isMissingFileError8(error) ? null : Promise.reject(error)
+  );
   const active = Boolean(configText?.includes("review_agents:"));
   const failed = findings.filter((finding) => finding.status === "failed");
   return [
@@ -2433,8 +3007,8 @@ function runReviewStage(changedFiles) {
 
 // src/structure-check.ts
 var import_promises13 = require("fs/promises");
-var import_node_path12 = __toESM(require("path"), 1);
-function isMissingFileError8(error) {
+var import_node_path13 = __toESM(require("path"), 1);
+function isMissingFileError9(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function parseStructureRules(text) {
@@ -2466,12 +3040,12 @@ function matchesPrefix(filePath, pattern) {
   return filePath === pattern || filePath.startsWith(pattern);
 }
 async function runStructureCheck(workDir, changedFiles) {
-  const rulesPath = import_node_path12.default.join(getHarnessPaths(workDir).harnessDir, "structure-rules.yaml");
+  const rulesPath = import_node_path13.default.join(getHarnessPaths(workDir).harnessDir, "structure-rules.yaml");
   let text;
   try {
     text = await (0, import_promises13.readFile)(rulesPath, "utf8");
   } catch (error) {
-    if (isMissingFileError8(error)) {
+    if (isMissingFileError9(error)) {
       return [
         {
           name: "structure.rules",
@@ -2498,7 +3072,7 @@ async function runStructureCheck(workDir, changedFiles) {
     for (const file of changedFiles) {
       if (rules.fileLengthExclude.some((pattern) => matchesPrefix(file, pattern))) continue;
       try {
-        const content = await (0, import_promises13.readFile)(import_node_path12.default.join(workDir, file), "utf8");
+        const content = await (0, import_promises13.readFile)(import_node_path13.default.join(workDir, file), "utf8");
         const lines = content.split(/\r?\n/).length;
         if (lines > rules.fileLengthMax) {
           violations.push(`${file}=${lines}`);
@@ -2897,6 +3471,30 @@ var WorkflowEngine = class {
         await saveEvidenceBaseline(ctx.workDir, buildEvidenceBaseline(evidence));
       } catch {
       }
+      if (ctx.contract?.assetPromotion?.promote && ctx.contract.assetPromotion.topic) {
+        const ap = ctx.contract.assetPromotion;
+        const topic = ap.topic;
+        try {
+          await promoteTaskArtifacts(ctx.workDir, ctx.taskId, {
+            topic,
+            files: ap.files,
+            mode: ap.mode
+          });
+          await this.manager.appendCommitSummarySection(
+            ctx,
+            "## Promoted Assets",
+            [
+              `- topic: ${topic}`,
+              `- files: ${ap.files.join(", ")}`,
+              `- mode: ${ap.mode}`,
+              `- promoted_at: ${(/* @__PURE__ */ new Date()).toISOString()}`
+            ].join("\n")
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await this.manager.appendCommitSummarySection(ctx, "## Promoted Assets", `- \u664B\u5347\u5931\u8D25\uFF1A${message}`);
+        }
+      }
     } else {
       const failedChecks = report.evidence.checks.filter((check) => check.status === "failed").map((check) => `${check.name}: ${check.detail}`);
       const feedback = [
@@ -2936,6 +3534,8 @@ function getCorePackageInfo() {
   TemplateRegistry,
   WorkflowEngine,
   appendFeedbackEntry,
+  appendToHarnessMeta,
+  applyPromotion,
   archiveTaskArtifacts,
   assemblePrompt,
   buildBaselineDiff,
@@ -2943,6 +3543,7 @@ function getCorePackageInfo() {
   buildEvidenceSnapshot,
   buildFeedbackEntry,
   checkContract,
+  checkWritePermission,
   collectChangedFiles,
   collectEnabledRoles,
   collectEvidence,
@@ -2968,31 +3569,37 @@ function getCorePackageInfo() {
   getEvidenceBaselinePath,
   getFeedbackHistoryPath,
   getFeedbackPoolPath,
+  getHarnessMetaPath,
   getHarnessPaths,
   getRoleForStage,
   getSkillPath,
   getTaskEvidenceDir,
   getTaskEvidencePath,
+  groupFindingsBySimilarity,
   listAgentFiles,
+  listArchiveTopics,
   loadAgentManifest,
   loadAgentManifests,
   loadEvidenceBaseline,
   loadFeedbackPool,
   loadHarnessConfig,
+  loadHarnessMeta,
   loadSkill,
   matchTemplate,
+  moveFindingsToHistory,
   parseHarnessConfig,
   pickRecentEntries,
   pickRecommendedAgent,
   promoteFeedbackEntry,
+  promoteTaskArtifacts,
   renderFeedbackEntriesAsLines,
-  renderGlobalRulesTemplate,
   renderResidentReview,
   renderReviewAgentsTemplate,
   renderSkillTemplate,
   renderStructureRulesTemplate,
   runArtifactGuard,
   runLevel2Validation,
+  runResidentReview,
   runReviewStage,
   runScopeCheck,
   runSkillCheck,
@@ -3000,8 +3607,11 @@ function getCorePackageInfo() {
   saveBaselineDiff,
   saveEvidenceBaseline,
   saveEvidenceSnapshot,
+  saveHarnessMeta,
   saveTemplateDraft,
   serializeHarnessConfig,
+  showArchiveTopic,
+  verifyArchive,
   writeDefaultAgentManifests,
   writeDefaultSkillManifests,
   writeFileIfChanged,
