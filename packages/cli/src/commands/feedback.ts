@@ -1,4 +1,4 @@
-import { loadFeedbackPool, promoteFeedbackEntry } from '@harnessly/core';
+import { loadFeedbackPool, promoteFeedbackEntry } from '@brawnen/harnessly-core';
 
 import { printLines } from '../utils/output';
 

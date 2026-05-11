@@ -7,7 +7,7 @@ import type {
   StageMarker,
   TaskContext,
   TaskState,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { assemblePrompt } from './prompt';
 

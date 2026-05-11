@@ -5,7 +5,7 @@ import {
   type TaskContext,
   type TaskReport,
   validateTaskReport,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 function buildSummary(commitGate: CommitGateResult): string {
   const preExistingHint =

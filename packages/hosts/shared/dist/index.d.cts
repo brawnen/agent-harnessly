@@ -1,4 +1,4 @@
-import { HostName, HostManifest, HostLifecycleCommands, AgentRole, AgentManifest } from '@harnessly/shared';
+import { HostName, HostManifest, HostLifecycleCommands, AgentRole, AgentManifest } from '@brawnen/harnessly-shared';
 
 declare function getRepoLocalShellPaths(host: HostName): string[];
 /**

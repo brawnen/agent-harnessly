@@ -1,4 +1,4 @@
-import { contractSchema, type Contract, type ContractGateResult, type TemplateName, validateContract } from '@harnessly/shared';
+import { contractSchema, type Contract, type ContractGateResult, type TemplateName, validateContract } from '@brawnen/harnessly-shared';
 
 import type { LLMClient } from './llm';
 import { createTemplateRegistry } from './template';

@@ -1,5 +1,5 @@
 // src/index.ts
-import { createHostManifest, renderClaudeCodeSubagentFile } from "@harnessly/host-shared";
+import { createHostManifest, renderClaudeCodeSubagentFile } from "@brawnen/harnessly-host-shared";
 function getClaudeCodeHostManifest() {
   return createHostManifest("claude-code");
 }

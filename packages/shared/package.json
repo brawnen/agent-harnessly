@@ -1,14 +1,19 @@
 {
-  "name": "@harnessly/shared",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@brawnen/harnessly-shared",
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -1,4 +1,4 @@
-import { createTemplateDraft, deriveTemplateName, saveTemplateDraft, TaskManager } from '@harnessly/core';
+import { createTemplateDraft, deriveTemplateName, saveTemplateDraft, TaskManager } from '@brawnen/harnessly-core';
 
 import { printLines } from '../utils/output';
 

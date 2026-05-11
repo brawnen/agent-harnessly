@@ -10,8 +10,8 @@ import {
   writeDefaultAgentManifests,
   writeFileIfChanged,
   writeHarnessConfig,
-} from '@harnessly/core';
-import type { HostName } from '@harnessly/shared';
+} from '@brawnen/harnessly-core';
+import type { HostName } from '@brawnen/harnessly-shared';
 
 import { installGitHooks } from '../utils/git-hooks';
 import { installHostShells, ensureHostManifest } from '../utils/hosts';

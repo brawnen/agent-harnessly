@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getHarnessPaths } from '@harnessly/core';
+import { getHarnessPaths } from '@brawnen/harnessly-core';
 
 export async function appendHarnessEvent(
   workDir: string,

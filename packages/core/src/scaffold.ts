@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { HarnessConfig } from '@harnessly/shared';
+import type { HarnessConfig } from '@brawnen/harnessly-shared';
 
 import { parseHarnessConfig, serializeHarnessConfig } from './config';
 

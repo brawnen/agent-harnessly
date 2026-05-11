@@ -2,6 +2,7 @@ import { runArchive } from './commands/archive';
 import { runEvidenceBaseline } from './commands/evidence-baseline';
 import { runFeedback } from './commands/feedback';
 import { runInit } from './commands/init';
+import { runIntake } from './commands/intake';
 import { runHostAgentEvent } from './commands/host/agent-event';
 import { runHostArtifactGuard } from './commands/host/artifact-guard';
 import { runHostCompletionGate } from './commands/host/completion-gate';
@@ -18,11 +19,13 @@ import { runTask } from './commands/run';
 import { runStatus } from './commands/status';
 import { runTemplatePromote } from './commands/template-promote';
 import { parseArgs } from './utils/args';
+import { CLI_PACKAGE_NAME, CLI_VERSION } from './version';
 
 function printUsage(): void {
   process.stdout.write(
     [
       'Usage:',
+      '  harnessly --version',
       '  harnessly init [--host claude-code|codex|gemini-cli] [--force]',
       '  harnessly eval [task-id]',
       '  harnessly list [--json]',
@@ -39,6 +42,7 @@ function printUsage(): void {
       '  harnessly evidence baseline [--show] [--clear] [--json]',
       '  harnessly feedback list',
       '  harnessly feedback promote <task-id> [reason]',
+      '  harnessly intake feedback list|add|remove|clear',
       '  harnessly host install [--host auto|all|claude-code|codex|gemini-cli]',
       '  harnessly host status [--json]',
       '  harnessly host sync [--host auto|all|claude-code|codex|gemini-cli]',
@@ -55,6 +59,11 @@ function printUsage(): void {
 export async function runCli(argv: string[]): Promise<void> {
   const parsed = parseArgs(argv);
   const [command, subcommand, ...rest] = parsed.positionals;
+
+  if (parsed.flags.version === true || command === 'version') {
+    process.stdout.write(`${CLI_PACKAGE_NAME} ${CLI_VERSION}\n`);
+    return;
+  }
 
   if (!command || command === '--help' || command === 'help') {
     printUsage();
@@ -108,6 +117,11 @@ export async function runCli(argv: string[]): Promise<void> {
 
   if (command === 'feedback') {
     await runFeedback([subcommand, ...rest].filter(Boolean));
+    return;
+  }
+
+  if (command === 'intake') {
+    await runIntake(parsed.flags, [subcommand, ...rest].filter(Boolean));
     return;
   }
 

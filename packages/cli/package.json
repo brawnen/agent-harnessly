@@ -1,7 +1,6 @@
 {
-  "name": "@harnessly/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@brawnen/harnessly",
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "bin": {
     "harnessly": "dist/index.js"
@@ -10,16 +9,22 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm --dts --clean",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@harnessly/core": "workspace:*",
-    "@harnessly/host-claude-code": "workspace:*",
-    "@harnessly/host-codex": "workspace:*",
-    "@harnessly/host-shared": "workspace:*",
-    "@harnessly/shared": "workspace:*"
+    "@brawnen/harnessly-core": "workspace:*",
+    "@brawnen/harnessly-host-claude-code": "workspace:*",
+    "@brawnen/harnessly-host-codex": "workspace:*",
+    "@brawnen/harnessly-host-shared": "workspace:*",
+    "@brawnen/harnessly-shared": "workspace:*"
   }
 }

@@ -9,7 +9,7 @@ import {
   parseFlatYaml,
   parseStringList,
   serializeFlatYaml,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 export function getRepoLocalShellPaths(host: HostName): string[] {
   switch (host) {

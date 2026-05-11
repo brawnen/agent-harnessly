@@ -1,4 +1,4 @@
-import type { Contract } from '@harnessly/shared';
+import type { Contract } from '@brawnen/harnessly-shared';
 
 export function generatePlan(contract: Contract): string {
   const acceptance = contract.acceptanceCriteria.map((item) => item.criterion).join('；');

@@ -2,7 +2,7 @@
 
 // src/index.ts
 import { fileURLToPath } from "url";
-import { getCorePackageInfo } from "@harnessly/core";
+import { getCorePackageInfo } from "@brawnen/harnessly-core";
 
 // src/commands/archive.ts
 import path2 from "path";
@@ -13,12 +13,12 @@ import {
   showArchiveTopic,
   TaskManager,
   verifyArchive
-} from "@harnessly/core";
+} from "@brawnen/harnessly-core";
 
 // src/utils/events.ts
 import { appendFile, mkdir } from "fs/promises";
 import path from "path";
-import { getHarnessPaths } from "@harnessly/core";
+import { getHarnessPaths } from "@brawnen/harnessly-core";
 async function appendHarnessEvent(workDir, event) {
   const harnessDir = getHarnessPaths(workDir).harnessDir;
   await mkdir(harnessDir, { recursive: true });
@@ -228,7 +228,7 @@ import {
   loadEvidenceBaseline,
   loadHarnessConfig,
   saveEvidenceBaseline
-} from "@harnessly/core";
+} from "@brawnen/harnessly-core";
 async function runEvidenceBaseline(flags) {
   const workDir = process.cwd();
   const asJson = flags.json === true;
@@ -295,7 +295,7 @@ async function runEvidenceBaseline(flags) {
 }
 
 // src/commands/feedback.ts
-import { loadFeedbackPool, promoteFeedbackEntry } from "@harnessly/core";
+import { loadFeedbackPool, promoteFeedbackEntry } from "@brawnen/harnessly-core";
 async function runFeedback(args) {
   const workDir = process.cwd();
   const subcommand = args[0] ?? "list";
@@ -333,7 +333,7 @@ import {
   writeDefaultAgentManifests,
   writeFileIfChanged,
   writeHarnessConfig
-} from "@harnessly/core";
+} from "@brawnen/harnessly-core";
 
 // src/utils/git-hooks.ts
 import { chmod, mkdir as mkdir2, readFile } from "fs/promises";
@@ -395,22 +395,22 @@ async function copyFileOrWrite(filePath, content) {
   if (existing && !existing.includes("Managed by Harnessly")) {
     throw new Error(`${filePath} \u5DF2\u5B58\u5728\u4E14\u4E0D\u662F Harnessly \u7BA1\u7406\u7684 hook\uFF0C\u62D2\u7EDD\u8986\u76D6`);
   }
-  const { writeFile: writeFile4 } = await import("fs/promises");
-  await writeFile4(filePath, content, "utf8");
+  const { writeFile: writeFile5 } = await import("fs/promises");
+  await writeFile5(filePath, content, "utf8");
 }
 
 // src/utils/hosts.ts
 import { mkdir as mkdir3, readFile as readFile2, writeFile } from "fs/promises";
 import path4 from "path";
-import { getHarnessPaths as getHarnessPaths2, loadAgentManifests, loadHarnessConfig as loadHarnessConfig2 } from "@harnessly/core";
-import { renderClaudeCodeManagedFiles } from "@harnessly/host-claude-code";
-import { renderCodexManagedFiles } from "@harnessly/host-codex";
+import { getHarnessPaths as getHarnessPaths2, loadAgentManifests, loadHarnessConfig as loadHarnessConfig2 } from "@brawnen/harnessly-core";
+import { renderClaudeCodeManagedFiles } from "@brawnen/harnessly-host-claude-code";
+import { renderCodexManagedFiles } from "@brawnen/harnessly-host-codex";
 import {
   createHostManifest,
   getHostManifestFilename,
   parseHostManifest,
   serializeHostManifest
-} from "@harnessly/host-shared";
+} from "@brawnen/harnessly-host-shared";
 async function readFileIfExists(filePath) {
   try {
     return await readFile2(filePath, "utf8");
@@ -604,9 +604,224 @@ async function runInit(flags) {
   ]);
 }
 
-// src/commands/host/agent-event.ts
-import { AGENT_ROLES } from "@harnessly/core";
+// src/utils/intake-feedback.ts
+import { appendFile as appendFile2, mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "fs/promises";
+import path5 from "path";
+import { getHarnessPaths as getHarnessPaths3 } from "@brawnen/harnessly-core";
+var FEEDBACK_FILENAME = "intake-feedback.jsonl";
+var LAST_DECISION_FILENAME = "intake-last.json";
+function isMissingFileError(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+function normalizePromptForFeedback(prompt) {
+  return prompt.trim().toLowerCase().replace(/\s+/g, " ").replace(/[？?。.!！,，；;：:]/g, "");
+}
+function getIntakeFeedbackPath(workDir) {
+  return path5.join(getHarnessPaths3(workDir).harnessDir, FEEDBACK_FILENAME);
+}
+function getLastIntakeDecisionPath(workDir) {
+  return path5.join(getHarnessPaths3(workDir).harnessDir, LAST_DECISION_FILENAME);
+}
+async function writeLastIntakeDecision(workDir, decision) {
+  const filePath = getLastIntakeDecisionPath(workDir);
+  await mkdir4(path5.dirname(filePath), { recursive: true });
+  await writeFile3(
+    filePath,
+    `${JSON.stringify({ ...decision, createdAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`,
+    "utf8"
+  );
+}
+async function readLastIntakeDecision(workDir) {
+  try {
+    return JSON.parse(await readFile3(getLastIntakeDecisionPath(workDir), "utf8"));
+  } catch (error) {
+    if (isMissingFileError(error)) return null;
+    return null;
+  }
+}
+async function appendIntakeFeedback(workDir, feedback) {
+  const entry = {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    prompt: feedback.prompt,
+    normalizedPrompt: normalizePromptForFeedback(feedback.prompt),
+    predictedAction: feedback.predictedAction,
+    actualAction: feedback.actualAction,
+    reason: feedback.reason,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const filePath = getIntakeFeedbackPath(workDir);
+  await mkdir4(path5.dirname(filePath), { recursive: true });
+  await appendFile2(filePath, `${JSON.stringify(entry)}
+`, "utf8");
+  return entry;
+}
+async function loadIntakeFeedback(workDir) {
+  try {
+    const text = await readFile3(getIntakeFeedbackPath(workDir), "utf8");
+    const entries = [];
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.prompt && parsed.actualAction && parsed.normalizedPrompt) {
+          entries.push(parsed);
+        }
+      } catch {
+      }
+    }
+    return entries;
+  } catch (error) {
+    if (isMissingFileError(error)) return [];
+    throw error;
+  }
+}
+async function rewriteIntakeFeedback(workDir, entries) {
+  const filePath = getIntakeFeedbackPath(workDir);
+  await mkdir4(path5.dirname(filePath), { recursive: true });
+  await writeFile3(filePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + (entries.length ? "\n" : ""), "utf8");
+}
+function trigrams(value) {
+  const normalized = normalizePromptForFeedback(value);
+  const padded = `  ${normalized}  `;
+  const result = /* @__PURE__ */ new Set();
+  for (let i = 0; i < padded.length - 2; i += 1) {
+    result.add(padded.slice(i, i + 3));
+  }
+  return result;
+}
+function similarity(left, right) {
+  const a = trigrams(left);
+  const b = trigrams(right);
+  if (a.size === 0 || b.size === 0) return 0;
+  const intersection = [...a].filter((item) => b.has(item)).length;
+  return intersection / (/* @__PURE__ */ new Set([...a, ...b])).size;
+}
+function classifyByIntakeFeedback(prompt, entries) {
+  const normalized = normalizePromptForFeedback(prompt);
+  const exact = [...entries].reverse().find((entry) => entry.normalizedPrompt === normalized);
+  if (exact) {
+    return {
+      action: exact.actualAction,
+      reason: "learned_exact_feedback",
+      confidence: 1,
+      matchedEntryIds: [exact.id]
+    };
+  }
+  const similarChatEntries = entries.map((entry) => ({ entry, score: similarity(normalized, entry.normalizedPrompt) })).filter(({ entry, score }) => entry.actualAction === "chat" && score >= 0.85).sort((a, b) => b.score - a.score);
+  if (similarChatEntries.length > 0) {
+    return {
+      action: "chat",
+      reason: "learned_similar_feedback",
+      confidence: similarChatEntries[0].score,
+      matchedEntryIds: similarChatEntries.slice(0, 3).map(({ entry }) => entry.id)
+    };
+  }
+  const weakerChatEntries = entries.map((entry) => ({ entry, score: similarity(normalized, entry.normalizedPrompt) })).filter(({ entry, score }) => entry.actualAction === "chat" && score >= 0.72).sort((a, b) => b.score - a.score);
+  if (weakerChatEntries.length >= 2) {
+    return {
+      action: "chat",
+      reason: "learned_similar_feedback",
+      confidence: weakerChatEntries[0].score,
+      matchedEntryIds: weakerChatEntries.slice(0, 3).map(({ entry }) => entry.id)
+    };
+  }
+  return null;
+}
+
+// src/commands/intake.ts
+var VALID_ACTIONS = [
+  "chat",
+  "delegate_to_planner",
+  "create_task",
+  "resume_task"
+];
 function readStringFlag2(flags, name) {
+  const value = flags[name];
+  return typeof value === "string" ? value.trim() : "";
+}
+function parseAction(value) {
+  if (VALID_ACTIONS.includes(value)) {
+    return value;
+  }
+  throw new Error(`\u975E\u6CD5 action: ${value || "(empty)"}\u3002\u5141\u8BB8\u503C\uFF1A${VALID_ACTIONS.join(", ")}`);
+}
+async function runIntake(flags, positionals) {
+  const workDir = process.cwd();
+  const [subcommand, ...rest] = positionals;
+  if (!subcommand || subcommand === "feedback") {
+    await runIntakeFeedback(workDir, flags, subcommand === "feedback" ? rest : positionals);
+    return;
+  }
+  throw new Error(`\u672A\u77E5 intake \u5B50\u547D\u4EE4\uFF1A${subcommand}`);
+}
+async function runIntakeFeedback(workDir, flags, positionals) {
+  const [subcommand, ...rest] = positionals;
+  if (!subcommand || subcommand === "list") {
+    const entries = await loadIntakeFeedback(workDir);
+    if (flags.json) {
+      printJson(entries);
+      return;
+    }
+    printLines(
+      entries.length === 0 ? ["\u6CA1\u6709 intake feedback\u3002"] : entries.map((entry) => `${entry.id}	${entry.actualAction}	${entry.reason}	${entry.prompt}`)
+    );
+    return;
+  }
+  if (subcommand === "add") {
+    const useLast = flags.last === true;
+    const actual = parseAction(readStringFlag2(flags, "actual"));
+    const reason = readStringFlag2(flags, "reason") || "manual correction";
+    const prompt = readStringFlag2(flags, "prompt") || rest.join(" ").trim();
+    let finalPrompt = prompt;
+    let predictedAction = parseAction(readStringFlag2(flags, "predicted") || "chat");
+    if (useLast) {
+      const last = await readLastIntakeDecision(workDir);
+      if (!last) {
+        throw new Error("\u6CA1\u6709\u53EF\u7528\u4E8E --last \u7684 intake-last.json\u3002\u8BF7\u6539\u7528 --prompt\u3002");
+      }
+      finalPrompt = last.prompt;
+      predictedAction = last.action;
+    }
+    if (!finalPrompt) {
+      throw new Error('\u7F3A\u5C11 prompt\u3002\u7528\u6CD5\uFF1Aharnessly intake feedback add --actual chat --prompt "..."');
+    }
+    const entry = await appendIntakeFeedback(workDir, {
+      prompt: finalPrompt,
+      predictedAction,
+      actualAction: actual,
+      reason
+    });
+    if (flags.json) {
+      printJson(entry);
+      return;
+    }
+    printLines([`intake feedback added: ${entry.id}`]);
+    return;
+  }
+  if (subcommand === "remove") {
+    const id = readStringFlag2(flags, "id") || rest[0]?.trim();
+    if (!id) {
+      throw new Error("\u7F3A\u5C11 id\u3002\u7528\u6CD5\uFF1Aharnessly intake feedback remove <id>");
+    }
+    const entries = await loadIntakeFeedback(workDir);
+    const kept = entries.filter((entry) => entry.id !== id);
+    await rewriteIntakeFeedback(workDir, kept);
+    printLines([`intake feedback removed: ${entries.length - kept.length}`]);
+    return;
+  }
+  if (subcommand === "clear") {
+    await rewriteIntakeFeedback(workDir, []);
+    printLines(["intake feedback cleared"]);
+    return;
+  }
+  throw new Error(`\u672A\u77E5 intake feedback \u5B50\u547D\u4EE4\uFF1A${subcommand}`);
+}
+
+// src/commands/host/agent-event.ts
+import { AGENT_ROLES } from "@brawnen/harnessly-core";
+function readStringFlag3(flags, name) {
   return typeof flags[name] === "string" ? flags[name].trim() : "";
 }
 function normalizeAgent(value) {
@@ -626,11 +841,11 @@ function normalizeEvent(value) {
 }
 async function runHostAgentEvent(flags, positionals) {
   const workDir = process.cwd();
-  const agent = normalizeAgent(readStringFlag2(flags, "agent") || positionals[0] || "");
-  const event = normalizeEvent(readStringFlag2(flags, "event") || positionals[1] || "started");
+  const agent = normalizeAgent(readStringFlag3(flags, "agent") || positionals[0] || "");
+  const event = normalizeEvent(readStringFlag3(flags, "event") || positionals[1] || "started");
   const activeTaskId = await readActiveTaskId(workDir);
-  const taskId = readStringFlag2(flags, "task-id") || activeTaskId || null;
-  const model = readStringFlag2(flags, "model") || null;
+  const taskId = readStringFlag3(flags, "task-id") || activeTaskId || null;
+  const model = readStringFlag3(flags, "model") || null;
   await appendHarnessEvent(workDir, {
     type: `subagent.${event}`,
     role: agent,
@@ -650,15 +865,15 @@ async function runHostAgentEvent(flags, positionals) {
 
 // src/commands/host/artifact-guard.ts
 import { resolve } from "path";
-import { checkWritePermission } from "@harnessly/core";
-function readStringFlag3(flags, name) {
+import { checkWritePermission } from "@brawnen/harnessly-core";
+function readStringFlag4(flags, name) {
   const value = flags[name];
   return typeof value === "string" ? value : "";
 }
 async function runHostArtifactGuard(flags) {
   const cwd = process.cwd();
-  let filePath = readStringFlag3(flags, "file");
-  const taskId = readStringFlag3(flags, "task-id") || void 0;
+  let filePath = readStringFlag4(flags, "file");
+  const taskId = readStringFlag4(flags, "task-id") || void 0;
   if (!filePath) {
     process.stdout.write(JSON.stringify({ allowed: false, reason: "\u7F3A\u5C11 --file \u53C2\u6570" }));
     return;
@@ -670,18 +885,18 @@ async function runHostArtifactGuard(flags) {
 }
 
 // src/commands/host/completion-gate.ts
-import { access, readFile as readFile3 } from "fs/promises";
-import path5 from "path";
+import { access, readFile as readFile4 } from "fs/promises";
+import path6 from "path";
 import {
   collectChangedFiles,
   collectEnabledRoles,
-  getHarnessPaths as getHarnessPaths3,
+  getHarnessPaths as getHarnessPaths4,
   loadAgentManifests as loadAgentManifests2,
   pickRecommendedAgent,
   runScopeCheck,
   TaskManager as TaskManager2
-} from "@harnessly/core";
-import { parseContract } from "@harnessly/shared";
+} from "@brawnen/harnessly-core";
+import { parseContract } from "@brawnen/harnessly-shared";
 async function fileExists(filePath) {
   try {
     await access(filePath);
@@ -692,7 +907,7 @@ async function fileExists(filePath) {
 }
 async function loadReportCommitReady(filePath) {
   try {
-    const report = JSON.parse(await readFile3(filePath, "utf8"));
+    const report = JSON.parse(await readFile4(filePath, "utf8"));
     return report.commitReady ?? null;
   } catch {
     return null;
@@ -700,7 +915,7 @@ async function loadReportCommitReady(filePath) {
 }
 async function loadContractIfExists(filePath) {
   try {
-    return parseContract(await readFile3(filePath, "utf8"));
+    return parseContract(await readFile4(filePath, "utf8"));
   } catch {
     return null;
   }
@@ -709,9 +924,9 @@ function isCompletionClaim(message) {
   return /(完成|done|fixed|已修复|搞定|完成了)/i.test(message);
 }
 async function countPreviousBlocks(workDir, taskId) {
-  const eventsFile = path5.join(getHarnessPaths3(workDir).harnessDir, "events.jsonl");
+  const eventsFile = path6.join(getHarnessPaths4(workDir).harnessDir, "events.jsonl");
   try {
-    const text = await readFile3(eventsFile, "utf8");
+    const text = await readFile4(eventsFile, "utf8");
     let count = 0;
     for (const line of text.split(/\r?\n/)) {
       if (line.includes('"type":"host.completion_gate_blocked"') && line.includes(`"activeTaskId":"${taskId}"`)) {
@@ -749,9 +964,9 @@ async function runHostCompletionGate(flags, positionals) {
     });
     return;
   }
-  const paths = getHarnessPaths3(workDir);
-  const reportFile = path5.join(paths.tasksDir, activeTaskId, "report.json");
-  const contractFile = path5.join(paths.tasksDir, activeTaskId, "contract.yaml");
+  const paths = getHarnessPaths4(workDir);
+  const reportFile = path6.join(paths.tasksDir, activeTaskId, "report.json");
+  const contractFile = path6.join(paths.tasksDir, activeTaskId, "contract.yaml");
   const evalCommand = `harnessly eval ${activeTaskId}`;
   const changedFiles = await collectChangedFiles(workDir);
   const contract = await loadContractIfExists(contractFile);
@@ -877,18 +1092,18 @@ async function runHostInstall(flags) {
 }
 
 // src/commands/host/resident-review.ts
-import { runResidentReview } from "@harnessly/core";
-function readStringFlag4(flags, name) {
+import { runResidentReview } from "@brawnen/harnessly-core";
+function readStringFlag5(flags, name) {
   const value = flags[name];
   return typeof value === "string" ? value : "";
 }
 async function runHostResidentReview(flags) {
   const workDir = process.cwd();
-  const trigger = readStringFlag4(flags, "trigger");
+  const trigger = readStringFlag5(flags, "trigger");
   if (!trigger || !["pre_push", "pre_merge", "on_demand"].includes(trigger)) {
     throw new Error("--trigger \u5FC5\u987B\u4E3A pre_push\u3001pre_merge \u6216 on_demand");
   }
-  const taskId = readStringFlag4(flags, "task-id") || void 0;
+  const taskId = readStringFlag5(flags, "task-id") || void 0;
   const result = await runResidentReview(workDir, trigger, taskId);
   if (flags.json) {
     printJson(result);
@@ -906,7 +1121,7 @@ async function runHostResidentReview(flags) {
 }
 
 // src/commands/host/session-start.ts
-import { TaskManager as TaskManager3 } from "@harnessly/core";
+import { TaskManager as TaskManager3 } from "@brawnen/harnessly-core";
 function pickRecommendation(hasActiveTask, status) {
   if (!hasActiveTask) {
     return "idle";
@@ -978,24 +1193,24 @@ import {
   pickRecommendedAgent as pickRecommendedAgent2,
   TaskManager as TaskManager4,
   WorkflowEngine
-} from "@harnessly/core";
+} from "@brawnen/harnessly-core";
 
 // src/utils/planner-fallback.ts
-import { readFile as readFile4, writeFile as writeFile3, unlink as unlink2 } from "fs/promises";
-import path6 from "path";
-import { getHarnessPaths as getHarnessPaths4 } from "@harnessly/core";
+import { readFile as readFile5, writeFile as writeFile4, unlink as unlink2 } from "fs/promises";
+import path7 from "path";
+import { getHarnessPaths as getHarnessPaths5 } from "@brawnen/harnessly-core";
 function getPendingFile(workDir) {
-  return path6.join(getHarnessPaths4(workDir).harnessDir, "pending-planner-delegation.json");
+  return path7.join(getHarnessPaths5(workDir).harnessDir, "pending-planner-delegation.json");
 }
 async function readPendingDelegation(workDir) {
   try {
-    return JSON.parse(await readFile4(getPendingFile(workDir), "utf8"));
+    return JSON.parse(await readFile5(getPendingFile(workDir), "utf8"));
   } catch {
     return null;
   }
 }
 async function writePendingDelegation(workDir, prompt) {
-  await writeFile3(
+  await writeFile4(
     getPendingFile(workDir),
     JSON.stringify({ prompt, timestamp: (/* @__PURE__ */ new Date()).toISOString() }),
     "utf8"
@@ -1062,7 +1277,8 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       action: "chat",
       reason: "empty_prompt",
       taskKind: "empty",
-      risk: "low"
+      risk: "low",
+      confidence: 1
     };
   }
   if (isHostInternalPrompt(prompt)) {
@@ -1070,7 +1286,8 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       action: "chat",
       reason: "host_internal_prompt",
       taskKind: "host_internal",
-      risk: "low"
+      risk: "low",
+      confidence: 1
     };
   }
   if (hasActiveTask && /(继续|resume|接着|延续)/i.test(prompt)) {
@@ -1078,7 +1295,8 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       action: "resume_task",
       reason: "resume_active_task",
       taskKind: "resume",
-      risk: "low"
+      risk: "low",
+      confidence: 1
     };
   }
   if (hasActiveTask && /(当前任务|这个任务|继续修复|继续做)/i.test(prompt)) {
@@ -1086,7 +1304,8 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       action: "resume_task",
       reason: "resume_active_task",
       taskKind: "resume",
-      risk: "low"
+      risk: "low",
+      confidence: 1
     };
   }
   if (isQuestionOnly(prompt)) {
@@ -1094,7 +1313,8 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       action: "chat",
       reason: "matched_question_intent",
       taskKind: "question",
-      risk: "low"
+      risk: "low",
+      confidence: 0.95
     };
   }
   const taskKind = detectChangeKind(prompt);
@@ -1103,14 +1323,33 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       action: allowFallbackCreate ? "create_task" : "delegate_to_planner",
       reason: "matched_change_intent",
       taskKind,
-      risk: detectRisk(prompt, taskKind)
+      risk: detectRisk(prompt, taskKind),
+      confidence: 0.9
     };
   }
   return {
-    action: allowFallbackCreate ? "create_task" : "delegate_to_planner",
-    reason: "default_change_intent",
-    taskKind: "code_change",
-    risk: "low"
+    action: "chat",
+    reason: "ambiguous_intent",
+    taskKind: "question",
+    risk: "low",
+    confidence: 0.4
+  };
+}
+function applyLearnedDecision(base, prompt, feedbackEntries) {
+  if (base.reason === "empty_prompt" || base.reason === "host_internal_prompt" || base.reason === "resume_active_task") {
+    return base;
+  }
+  const learned = classifyByIntakeFeedback(prompt, feedbackEntries);
+  if (!learned) {
+    return base;
+  }
+  return {
+    action: learned.action,
+    reason: learned.reason,
+    taskKind: learned.action === "chat" ? "question" : base.taskKind,
+    risk: base.risk,
+    confidence: learned.confidence,
+    learnedFrom: learned.matchedEntryIds
   };
 }
 async function resolveRecommendedAgent(workDir, action, activeStage) {
@@ -1139,11 +1378,13 @@ async function runHostUserPromptSubmit(flags, positionals) {
     }
   }
   const pending = await readPendingDelegation(workDir);
-  const decision = classifyPrompt(
+  const feedbackEntries = await loadIntakeFeedback(workDir);
+  const builtinDecision = classifyPrompt(
     prompt,
     Boolean(activeTaskId),
     config.fallbackCreateTaskWithoutPlanner || pending !== null
   );
+  const decision = applyLearnedDecision(builtinDecision, prompt, feedbackEntries);
   const { action } = decision;
   const recommendedAgent = await resolveRecommendedAgent(workDir, action, activeStage);
   await appendHarnessEvent(workDir, {
@@ -1153,10 +1394,19 @@ async function runHostUserPromptSubmit(flags, positionals) {
     reason: decision.reason,
     taskKind: decision.taskKind,
     risk: decision.risk,
+    confidence: decision.confidence,
+    learnedFrom: decision.learnedFrom,
     activeTaskId,
     activeStage,
     recommendedAgent,
     taskCreated: false
+  });
+  await writeLastIntakeDecision(workDir, {
+    prompt,
+    action,
+    reason: decision.reason,
+    taskKind: decision.taskKind,
+    risk: decision.risk
   });
   if (action === "create_task") {
     await clearPendingDelegation(workDir);
@@ -1184,6 +1434,8 @@ async function runHostUserPromptSubmit(flags, positionals) {
       reason: decision.reason,
       taskKind: decision.taskKind,
       risk: decision.risk,
+      confidence: decision.confidence,
+      learnedFrom: decision.learnedFrom,
       taskCreated: true,
       taskId: ctx.taskId,
       contractPath: `${ctx.taskDir}/contract.yaml`,
@@ -1205,16 +1457,18 @@ async function runHostUserPromptSubmit(flags, positionals) {
     reason: decision.reason,
     taskKind: decision.taskKind,
     risk: decision.risk,
+    confidence: decision.confidence,
+    learnedFrom: decision.learnedFrom,
     taskCreated: false,
     recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,
-    autoFallback: pending !== null,
+    autoFallback: false,
     nextStep: action === "resume_task" ? "resume_existing_task" : action === "delegate_to_planner" ? "delegate_to_planner" : "no_action"
   });
 }
 
 // src/commands/eval.ts
-import { collectEvidence as collectEvidence2, createTaskReport, evaluateCommitGate, TaskManager as TaskManager5 } from "@harnessly/core";
+import { collectEvidence as collectEvidence2, createTaskReport, evaluateCommitGate, TaskManager as TaskManager5 } from "@brawnen/harnessly-core";
 function createEvalOnlyAdapter() {
   return {
     kind: "custom",
@@ -1259,7 +1513,7 @@ async function runEval(flags, positionals) {
 }
 
 // src/commands/list.ts
-import { TaskManager as TaskManager6 } from "@harnessly/core";
+import { TaskManager as TaskManager6 } from "@brawnen/harnessly-core";
 async function runList(flags) {
   const manager = new TaskManager6();
   const workDir = process.cwd();
@@ -1287,7 +1541,7 @@ async function runList(flags) {
 }
 
 // src/commands/retry.ts
-import { TaskManager as TaskManager7, WorkflowEngine as WorkflowEngine2 } from "@harnessly/core";
+import { TaskManager as TaskManager7, WorkflowEngine as WorkflowEngine2 } from "@brawnen/harnessly-core";
 async function runRetry(flags, positionals) {
   const workDir = process.cwd();
   const manager = new TaskManager7();
@@ -1325,7 +1579,7 @@ async function runRetry(flags, positionals) {
 import {
   TaskManager as TaskManager8,
   WorkflowEngine as WorkflowEngine3
-} from "@harnessly/core";
+} from "@brawnen/harnessly-core";
 
 // src/utils/interaction.ts
 import { createInterface } from "readline/promises";
@@ -1476,7 +1730,7 @@ async function runTask(flags, positionals) {
 }
 
 // src/commands/status.ts
-import { TaskManager as TaskManager9 } from "@harnessly/core";
+import { TaskManager as TaskManager9 } from "@brawnen/harnessly-core";
 function resolveRequestedTaskId(flags, positionals) {
   if (typeof flags["task-id"] === "string" && flags["task-id"].trim()) {
     return flags["task-id"].trim();
@@ -1563,7 +1817,7 @@ async function runStatus(flags, positionals) {
 }
 
 // src/commands/template-promote.ts
-import { createTemplateDraft, deriveTemplateName, saveTemplateDraft, TaskManager as TaskManager10 } from "@harnessly/core";
+import { createTemplateDraft, deriveTemplateName, saveTemplateDraft, TaskManager as TaskManager10 } from "@brawnen/harnessly-core";
 async function runTemplatePromote(flags, positionals) {
   const workDir = process.cwd();
   const manager = new TaskManager10();
@@ -1600,7 +1854,8 @@ var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
   "skip-confirm",
   "deep-eval",
   "json",
-  "force"
+  "force",
+  "last"
 ]);
 function parseArgs(argv) {
   const positionals = [];
@@ -1623,11 +1878,16 @@ function parseArgs(argv) {
   return { positionals, flags };
 }
 
+// src/version.ts
+var CLI_PACKAGE_NAME = "@brawnen/harnessly";
+var CLI_VERSION = "0.1.0-alpha.0";
+
 // src/run-cli.ts
 function printUsage() {
   process.stdout.write(
     [
       "Usage:",
+      "  harnessly --version",
       "  harnessly init [--host claude-code|codex|gemini-cli] [--force]",
       "  harnessly eval [task-id]",
       "  harnessly list [--json]",
@@ -1644,6 +1904,7 @@ function printUsage() {
       "  harnessly evidence baseline [--show] [--clear] [--json]",
       "  harnessly feedback list",
       "  harnessly feedback promote <task-id> [reason]",
+      "  harnessly intake feedback list|add|remove|clear",
       "  harnessly host install [--host auto|all|claude-code|codex|gemini-cli]",
       "  harnessly host status [--json]",
       "  harnessly host sync [--host auto|all|claude-code|codex|gemini-cli]",
@@ -1659,6 +1920,11 @@ function printUsage() {
 async function runCli(argv) {
   const parsed = parseArgs(argv);
   const [command, subcommand, ...rest] = parsed.positionals;
+  if (parsed.flags.version === true || command === "version") {
+    process.stdout.write(`${CLI_PACKAGE_NAME} ${CLI_VERSION}
+`);
+    return;
+  }
   if (!command || command === "--help" || command === "help") {
     printUsage();
     return;
@@ -1703,6 +1969,10 @@ async function runCli(argv) {
     await runFeedback([subcommand, ...rest].filter(Boolean));
     return;
   }
+  if (command === "intake") {
+    await runIntake(parsed.flags, [subcommand, ...rest].filter(Boolean));
+    return;
+  }
   if (command === "host") {
     switch (subcommand) {
       case "install":
@@ -1743,8 +2013,8 @@ async function runCli(argv) {
 // src/index.ts
 function getCliRuntimeSummary() {
   return {
-    packageName: "@harnessly/cli",
-    version: "0.0.0",
+    packageName: CLI_PACKAGE_NAME,
+    version: CLI_VERSION,
     core: getCorePackageInfo()
   };
 }

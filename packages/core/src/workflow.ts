@@ -7,8 +7,8 @@ import type {
   StageMarker,
   TaskContext,
   TaskReport,
-} from '@harnessly/shared';
-import { validateDesignMarkdown, validateRequirementMarkdown } from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
+import { validateDesignMarkdown, validateRequirementMarkdown } from '@brawnen/harnessly-shared';
 
 import { checkContract, generateContract } from './contract';
 import { runArtifactGuard } from './artifact-guard';

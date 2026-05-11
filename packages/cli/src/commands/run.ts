@@ -1,8 +1,8 @@
 import {
   TaskManager,
   WorkflowEngine,
-} from '@harnessly/core';
-import type { AdapterKind } from '@harnessly/shared';
+} from '@brawnen/harnessly-core';
+import type { AdapterKind } from '@brawnen/harnessly-shared';
 
 import { confirmContract } from '../utils/interaction';
 import { printLines } from '../utils/output';

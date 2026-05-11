@@ -8,7 +8,7 @@ import {
   type StageMarker,
   parseAgentManifestYaml,
   serializeAgentManifestYaml,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { getHarnessPaths } from './scaffold';
 

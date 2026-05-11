@@ -8,7 +8,7 @@ import {
   TaskManager,
   verifyArchive,
   type ArchiveKind,
-} from '@harnessly/core';
+} from '@brawnen/harnessly-core';
 
 import { appendHarnessEvent } from '../utils/events';
 import { printJson, printLines } from '../utils/output';

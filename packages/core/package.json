@@ -1,20 +1,25 @@
 {
-  "name": "@harnessly/core",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@brawnen/harnessly-core",
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
-    "@harnessly/shared": "workspace:*",
+    "@brawnen/harnessly-shared": "workspace:*",
     "zod": "^3.24.1",
     "zod-to-json-schema": "^3.24.6"
   }

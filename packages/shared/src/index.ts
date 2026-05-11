@@ -1,7 +1,7 @@
 import { ZodError, z } from 'zod';
 
-export const SHARED_PACKAGE_NAME = '@harnessly/shared';
-export const HARNESSLY_VERSION = '0.0.0';
+export const SHARED_PACKAGE_NAME = '@brawnen/harnessly-shared';
+export const HARNESSLY_VERSION = '0.1.0-alpha.0';
 
 export type HostName = 'claude-code' | 'codex' | 'gemini-cli';
 export type ProjectType = 'node' | 'go' | 'python' | 'unknown';

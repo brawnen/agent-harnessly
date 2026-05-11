@@ -10,7 +10,7 @@ import type {
   FeedbackEntry,
   TaskContext,
   TaskReport,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import {
   appendFeedbackEntry,

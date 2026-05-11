@@ -1,4 +1,4 @@
-import type { RiskLevel, TemplateName } from '@harnessly/shared';
+import type { RiskLevel, TemplateName } from '@brawnen/harnessly-shared';
 
 export interface BuiltinTemplateDefinition {
   name: TemplateName;

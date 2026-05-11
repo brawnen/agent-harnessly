@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { EvidenceCheckResult } from '@harnessly/shared';
+import type { EvidenceCheckResult } from '@brawnen/harnessly-shared';
 
 import { getHarnessPaths } from './scaffold';
 

@@ -9,8 +9,8 @@ import {
   pickRecommendedAgent,
   runScopeCheck,
   TaskManager,
-} from '@harnessly/core';
-import { type Contract, parseContract, type StageMarker } from '@harnessly/shared';
+} from '@brawnen/harnessly-core';
+import { type Contract, parseContract, type StageMarker } from '@brawnen/harnessly-shared';
 
 import { appendHarnessEvent } from '../../utils/events';
 import { readActiveTaskId } from '../../utils/hosts';

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { getCorePackageInfo } from '@harnessly/core';
+import { getCorePackageInfo } from '@brawnen/harnessly-core';
 
 interface CliRuntimeSummary {
     packageName: string;

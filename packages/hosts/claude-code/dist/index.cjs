@@ -30,9 +30,9 @@ __export(index_exports, {
   renderClaudeCodeUserPromptSubmitHook: () => renderClaudeCodeUserPromptSubmitHook
 });
 module.exports = __toCommonJS(index_exports);
-var import_host_shared = require("@harnessly/host-shared");
+var import_harnessly_host_shared = require("@brawnen/harnessly-host-shared");
 function getClaudeCodeHostManifest() {
-  return (0, import_host_shared.createHostManifest)("claude-code");
+  return (0, import_harnessly_host_shared.createHostManifest)("claude-code");
 }
 function renderClaudeCodeHookIo(manifest) {
   return [
@@ -388,7 +388,7 @@ function renderClaudeCodeManagedFiles(manifest, options = {}) {
     if (!agentManifest.enabled) {
       continue;
     }
-    files[`.claude/agents/harness-${agentManifest.role}.md`] = (0, import_host_shared.renderClaudeCodeSubagentFile)(agentManifest);
+    files[`.claude/agents/harness-${agentManifest.role}.md`] = (0, import_harnessly_host_shared.renderClaudeCodeSubagentFile)(agentManifest);
   }
   return files;
 }

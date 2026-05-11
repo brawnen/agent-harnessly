@@ -1,7 +1,7 @@
 import { readFile, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getHarnessPaths } from '@harnessly/core';
+import { getHarnessPaths } from '@brawnen/harnessly-core';
 
 interface PendingDelegation {
   prompt: string;

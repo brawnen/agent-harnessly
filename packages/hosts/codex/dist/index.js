@@ -1,5 +1,5 @@
 // src/index.ts
-import { createHostManifest, renderCodexSubagentFile } from "@harnessly/host-shared";
+import { createHostManifest, renderCodexSubagentFile } from "@brawnen/harnessly-host-shared";
 function getCodexHostManifest() {
   return createHostManifest("codex");
 }

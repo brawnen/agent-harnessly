@@ -23,19 +23,19 @@ importers:
 
   packages/cli:
     dependencies:
-      '@harnessly/core':
+      '@brawnen/harnessly-core':
         specifier: workspace:*
         version: link:../core
-      '@harnessly/host-claude-code':
+      '@brawnen/harnessly-host-claude-code':
         specifier: workspace:*
         version: link:../hosts/claude-code
-      '@harnessly/host-codex':
+      '@brawnen/harnessly-host-codex':
         specifier: workspace:*
         version: link:../hosts/codex
-      '@harnessly/host-shared':
+      '@brawnen/harnessly-host-shared':
         specifier: workspace:*
         version: link:../hosts/shared
-      '@harnessly/shared':
+      '@brawnen/harnessly-shared':
         specifier: workspace:*
         version: link:../shared
 
@@ -44,7 +44,7 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.52.0
         version: 0.52.0
-      '@harnessly/shared':
+      '@brawnen/harnessly-shared':
         specifier: workspace:*
         version: link:../shared
       zod:
@@ -56,19 +56,25 @@ importers:
 
   packages/hosts/claude-code:
     dependencies:
-      '@harnessly/host-shared':
+      '@brawnen/harnessly-host-shared':
         specifier: workspace:*
         version: link:../shared
+      '@brawnen/harnessly-shared':
+        specifier: workspace:*
+        version: link:../../shared
 
   packages/hosts/codex:
     dependencies:
-      '@harnessly/host-shared':
+      '@brawnen/harnessly-host-shared':
         specifier: workspace:*
         version: link:../shared
+      '@brawnen/harnessly-shared':
+        specifier: workspace:*
+        version: link:../../shared
 
   packages/hosts/shared:
     dependencies:
-      '@harnessly/shared':
+      '@brawnen/harnessly-shared':
         specifier: workspace:*
         version: link:../../shared
 

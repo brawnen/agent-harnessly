@@ -1,5 +1,5 @@
-import { TaskManager } from '@harnessly/core';
-import type { StageMarker, TaskStatus } from '@harnessly/shared';
+import { TaskManager } from '@brawnen/harnessly-core';
+import type { StageMarker, TaskStatus } from '@brawnen/harnessly-shared';
 
 import { readActiveTaskId } from '../../utils/hosts';
 import { printJson } from '../../utils/output';

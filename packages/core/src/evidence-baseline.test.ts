@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { EvidenceResult } from '@harnessly/shared';
+import type { EvidenceResult } from '@brawnen/harnessly-shared';
 
 import {
   buildEvidenceBaseline,

@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { HostName } from '@harnessly/shared';
+import type { HostName } from '@brawnen/harnessly-shared';
 
 /**
  * 安装 git hooks 到 .git/hooks/。

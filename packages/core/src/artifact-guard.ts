@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { EvidenceCheckResult } from '@harnessly/shared';
+import type { EvidenceCheckResult } from '@brawnen/harnessly-shared';
 
 async function exists(filePath: string): Promise<boolean> {
   try {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { runScopeCheck } from './scope';
-import type { Contract } from '@harnessly/shared';
+import type { Contract } from '@brawnen/harnessly-shared';
 
 function makeContract(scopeExclude: string[], scopeInclude: string[] = []): Contract {
   return {

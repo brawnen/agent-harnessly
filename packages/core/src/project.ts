@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ProjectType, RequiredCheck } from '@harnessly/shared';
+import type { ProjectType, RequiredCheck } from '@brawnen/harnessly-shared';
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {

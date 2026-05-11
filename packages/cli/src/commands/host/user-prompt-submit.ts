@@ -5,11 +5,16 @@ import {
   pickRecommendedAgent,
   TaskManager,
   WorkflowEngine,
-} from '@harnessly/core';
-import type { StageMarker } from '@harnessly/shared';
+} from '@brawnen/harnessly-core';
+import type { StageMarker } from '@brawnen/harnessly-shared';
 
 import { appendHarnessEvent } from '../../utils/events';
 import { readActiveTaskId } from '../../utils/hosts';
+import {
+  classifyByIntakeFeedback,
+  loadIntakeFeedback,
+  writeLastIntakeDecision,
+} from '../../utils/intake-feedback';
 import { printJson } from '../../utils/output';
 import { clearPendingDelegation, readPendingDelegation, writePendingDelegation } from '../../utils/planner-fallback';
 
@@ -35,9 +40,13 @@ interface IntakeDecision {
     | 'resume_active_task'
     | 'matched_change_intent'
     | 'matched_question_intent'
-    | 'default_change_intent';
+    | 'ambiguous_intent'
+    | 'learned_exact_feedback'
+    | 'learned_similar_feedback';
   taskKind: TaskKind;
   risk: IntakeRisk;
+  confidence: number;
+  learnedFrom?: string[];
 }
 
 function isHostInternalPrompt(prompt: string): boolean {
@@ -119,6 +128,7 @@ function classifyPrompt(
       reason: 'empty_prompt',
       taskKind: 'empty',
       risk: 'low',
+      confidence: 1,
     };
   }
 
@@ -128,6 +138,7 @@ function classifyPrompt(
       reason: 'host_internal_prompt',
       taskKind: 'host_internal',
       risk: 'low',
+      confidence: 1,
     };
   }
 
@@ -137,6 +148,7 @@ function classifyPrompt(
       reason: 'resume_active_task',
       taskKind: 'resume',
       risk: 'low',
+      confidence: 1,
     };
   }
 
@@ -146,6 +158,7 @@ function classifyPrompt(
       reason: 'resume_active_task',
       taskKind: 'resume',
       risk: 'low',
+      confidence: 1,
     };
   }
 
@@ -155,6 +168,7 @@ function classifyPrompt(
       reason: 'matched_question_intent',
       taskKind: 'question',
       risk: 'low',
+      confidence: 0.95,
     };
   }
 
@@ -165,14 +179,40 @@ function classifyPrompt(
       reason: 'matched_change_intent',
       taskKind,
       risk: detectRisk(prompt, taskKind),
+      confidence: 0.9,
     };
   }
 
   return {
-    action: allowFallbackCreate ? 'create_task' : 'delegate_to_planner',
-    reason: 'default_change_intent',
-    taskKind: 'code_change',
+    action: 'chat',
+    reason: 'ambiguous_intent',
+    taskKind: 'question',
     risk: 'low',
+    confidence: 0.4,
+  };
+}
+
+function applyLearnedDecision(
+  base: IntakeDecision,
+  prompt: string,
+  feedbackEntries: Awaited<ReturnType<typeof loadIntakeFeedback>>,
+): IntakeDecision {
+  if (base.reason === 'empty_prompt' || base.reason === 'host_internal_prompt' || base.reason === 'resume_active_task') {
+    return base;
+  }
+
+  const learned = classifyByIntakeFeedback(prompt, feedbackEntries);
+  if (!learned) {
+    return base;
+  }
+
+  return {
+    action: learned.action,
+    reason: learned.reason,
+    taskKind: learned.action === 'chat' ? 'question' : base.taskKind,
+    risk: base.risk,
+    confidence: learned.confidence,
+    learnedFrom: learned.matchedEntryIds,
   };
 }
 
@@ -224,11 +264,13 @@ export async function runHostUserPromptSubmit(
 
   // 自动降级：上次 Planner 委派未产生 task，本次直接 create_task
   const pending = await readPendingDelegation(workDir);
-  const decision = classifyPrompt(
+  const feedbackEntries = await loadIntakeFeedback(workDir);
+  const builtinDecision = classifyPrompt(
     prompt,
     Boolean(activeTaskId),
     config.fallbackCreateTaskWithoutPlanner || (pending !== null),
   );
+  const decision = applyLearnedDecision(builtinDecision, prompt, feedbackEntries);
   const { action } = decision;
 
   // v3-core 5 角色路由：根据 action + stage 选推荐 sub-agent
@@ -241,10 +283,19 @@ export async function runHostUserPromptSubmit(
     reason: decision.reason,
     taskKind: decision.taskKind,
     risk: decision.risk,
+    confidence: decision.confidence,
+    learnedFrom: decision.learnedFrom,
     activeTaskId,
     activeStage,
     recommendedAgent,
     taskCreated: false,
+  });
+  await writeLastIntakeDecision(workDir, {
+    prompt,
+    action,
+    reason: decision.reason,
+    taskKind: decision.taskKind,
+    risk: decision.risk,
   });
 
   if (action === 'create_task') {
@@ -275,6 +326,8 @@ export async function runHostUserPromptSubmit(
       reason: decision.reason,
       taskKind: decision.taskKind,
       risk: decision.risk,
+      confidence: decision.confidence,
+      learnedFrom: decision.learnedFrom,
       taskCreated: true,
       taskId: ctx.taskId,
       contractPath: `${ctx.taskDir}/contract.yaml`,
@@ -298,10 +351,12 @@ export async function runHostUserPromptSubmit(
     reason: decision.reason,
     taskKind: decision.taskKind,
     risk: decision.risk,
+    confidence: decision.confidence,
+    learnedFrom: decision.learnedFrom,
     taskCreated: false,
     recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,
-    autoFallback: pending !== null,
+    autoFallback: false,
     nextStep:
       action === 'resume_task'
         ? 'resume_existing_task'

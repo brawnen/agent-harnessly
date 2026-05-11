@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AgentManifest } from '@harnessly/shared';
+import type { AgentManifest } from '@brawnen/harnessly-shared';
 
 import {
   createHostManifest,

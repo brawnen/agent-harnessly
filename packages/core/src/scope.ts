@@ -1,4 +1,4 @@
-import type { Contract, EvidenceCheckResult } from '@harnessly/shared';
+import type { Contract, EvidenceCheckResult } from '@brawnen/harnessly-shared';
 
 /**
  * v3-core SPEC §11 Scope Check

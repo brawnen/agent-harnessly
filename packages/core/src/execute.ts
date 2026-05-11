@@ -1,7 +1,7 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { AdapterInput, AdapterKind, AdapterOutput } from '@harnessly/shared';
+import type { AdapterInput, AdapterKind, AdapterOutput } from '@brawnen/harnessly-shared';
 
 const execAsync = promisify(exec);
 

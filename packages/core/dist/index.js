@@ -1,5 +1,5 @@
 // src/index.ts
-import { packageInfo as sharedPackageInfo } from "@harnessly/shared";
+import { packageInfo as sharedPackageInfo } from "@brawnen/harnessly-shared";
 
 // src/agent.ts
 import { readdir, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
@@ -7,7 +7,7 @@ import path3 from "path";
 import {
   parseAgentManifestYaml,
   serializeAgentManifestYaml
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 
 // src/scaffold.ts
 import { mkdir, readFile, writeFile } from "fs/promises";
@@ -18,7 +18,7 @@ import {
   HARNESSLY_VERSION,
   parseHarnessConfig as parseHarnessConfigFromShared,
   serializeHarnessConfig as serializeHarnessConfigFromShared
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 
 // src/project.ts
 import { access } from "fs/promises";
@@ -489,7 +489,7 @@ async function writeDefaultAgentManifests(workDir, force = false) {
 // src/archive.ts
 import { access as access2, copyFile, mkdir as mkdir4, readFile as readFile5, writeFile as writeFile5 } from "fs/promises";
 import path6 from "path";
-import { harnessMetaFileSchema, parseTaskReport as parseTaskReport2 } from "@harnessly/shared";
+import { harnessMetaFileSchema, parseTaskReport as parseTaskReport2 } from "@brawnen/harnessly-shared";
 
 // src/task.ts
 import crypto from "crypto";
@@ -500,14 +500,14 @@ import {
   parseContract,
   serializeContract,
   serializeTaskReport
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 
 // src/feedback-pool.ts
 import { appendFile, mkdir as mkdir2, readFile as readFile3, writeFile as writeFile3 } from "fs/promises";
 import path4 from "path";
 import {
   feedbackEntrySchema
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 var FEEDBACK_POOL_FILENAME = "feedback-pool.jsonl";
 function getFeedbackPoolPath(workDir) {
   return path4.join(getHarnessPaths(workDir).harnessDir, FEEDBACK_POOL_FILENAME);
@@ -1612,7 +1612,7 @@ async function readActiveTaskId(workDir) {
 }
 
 // src/contract.ts
-import { contractSchema, validateContract } from "@harnessly/shared";
+import { contractSchema, validateContract } from "@brawnen/harnessly-shared";
 
 // src/template.ts
 var builtinTemplates = [
@@ -1873,7 +1873,7 @@ import {
   parseFlatYaml,
   parseStringList,
   skillSchema
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 var execAsync = promisify(exec);
 function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -2158,7 +2158,7 @@ import {
   baselineDiffSchema,
   evidenceBaselineSchema,
   evidenceSnapshotSchema
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 var EVIDENCE_BASELINE_FILENAME = "evidence-baseline.json";
 function getEvidenceBaselinePath(workDir) {
   return path10.join(getHarnessPaths(workDir).harnessDir, EVIDENCE_BASELINE_FILENAME);
@@ -2475,7 +2475,7 @@ function generatePlan(contract) {
 // src/promote.ts
 import { mkdir as mkdir7, writeFile as writeFile7 } from "fs/promises";
 import path11 from "path";
-import { serializeTemplateDraft } from "@harnessly/shared";
+import { serializeTemplateDraft } from "@brawnen/harnessly-shared";
 function slugify(input) {
   return input.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "template";
 }
@@ -2634,7 +2634,7 @@ function assemblePrompt(ctx) {
 // src/report.ts
 import {
   validateTaskReport
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 function buildSummary(commitGate) {
   const preExistingHint = commitGate.preExistingFailures.length > 0 ? `\uFF08\u5DF2\u5FFD\u7565 baseline \u65E7\u5931\u8D25\uFF1A${commitGate.preExistingFailures.join(", ")}\uFF09` : "";
   if (commitGate.decision === "pass") {
@@ -3000,7 +3000,7 @@ async function runStructureCheck(workDir, changedFiles) {
 }
 
 // src/workflow.ts
-import { validateDesignMarkdown, validateRequirementMarkdown } from "@harnessly/shared";
+import { validateDesignMarkdown, validateRequirementMarkdown } from "@brawnen/harnessly-shared";
 function markCompleted(ctx, stage) {
   if (!ctx.state.completedStages.includes(stage)) {
     ctx.state.completedStages = [...ctx.state.completedStages, stage];
@@ -3407,11 +3407,11 @@ var WorkflowEngine = class {
 };
 
 // src/index.ts
-var CORE_PACKAGE_NAME = "@harnessly/core";
+var CORE_PACKAGE_NAME = "@brawnen/harnessly-core";
 function getCorePackageInfo() {
   return {
     name: CORE_PACKAGE_NAME,
-    version: "0.0.0",
+    version: "0.1.0-alpha.0",
     dependsOn: [sharedPackageInfo.name]
   };
 }

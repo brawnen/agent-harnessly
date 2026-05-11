@@ -1,4 +1,4 @@
-import { runResidentReview } from '@harnessly/core';
+import { runResidentReview } from '@brawnen/harnessly-core';
 
 import { printJson, printLines } from '../../utils/output';
 

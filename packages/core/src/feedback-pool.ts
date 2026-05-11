@@ -12,7 +12,7 @@ import {
   type TaskReport,
   type TemplateName,
   type TaskContext,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { getHarnessPaths } from './scaffold';
 

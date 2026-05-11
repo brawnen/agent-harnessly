@@ -8,8 +8,8 @@ import type {
   HarnessMetaFile,
   SourceTaskEntry,
   TaskReport,
-} from '@harnessly/shared';
-import { harnessMetaFileSchema, parseTaskReport } from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
+import { harnessMetaFileSchema, parseTaskReport } from '@brawnen/harnessly-shared';
 
 import { TaskManager } from './task';
 

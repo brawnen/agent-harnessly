@@ -5,7 +5,7 @@ import {
   parseFlatYaml,
   parseStringList,
   serializeFlatYaml
-} from "@harnessly/shared";
+} from "@brawnen/harnessly-shared";
 function getRepoLocalShellPaths(host) {
   switch (host) {
     case "claude-code":

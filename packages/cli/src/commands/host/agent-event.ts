@@ -1,5 +1,5 @@
-import { AGENT_ROLES } from '@harnessly/core';
-import type { AgentRole } from '@harnessly/shared';
+import { AGENT_ROLES } from '@brawnen/harnessly-core';
+import type { AgentRole } from '@brawnen/harnessly-shared';
 
 import { appendHarnessEvent } from '../../utils/events';
 import { readActiveTaskId } from '../../utils/hosts';

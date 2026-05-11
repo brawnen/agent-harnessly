@@ -1,5 +1,5 @@
-import type { AgentManifest, HostManifest } from '@harnessly/shared';
-import { createHostManifest, renderClaudeCodeSubagentFile } from '@harnessly/host-shared';
+import type { AgentManifest, HostManifest } from '@brawnen/harnessly-shared';
+import { createHostManifest, renderClaudeCodeSubagentFile } from '@brawnen/harnessly-host-shared';
 
 /**
  * v3-core host renderer 选项：传入 5 角色 sub-agent manifest，

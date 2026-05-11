@@ -1,5 +1,5 @@
-import type { AgentManifest, HostManifest } from '@harnessly/shared';
-import { createHostManifest, renderCodexSubagentFile } from '@harnessly/host-shared';
+import type { AgentManifest, HostManifest } from '@brawnen/harnessly-shared';
+import { createHostManifest, renderCodexSubagentFile } from '@brawnen/harnessly-host-shared';
 
 export interface CodexHookRenderOptions {
   userPromptSubmitHookEnabled?: boolean;

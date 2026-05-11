@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { checkWritePermission } from '@harnessly/core';
+import { checkWritePermission } from '@brawnen/harnessly-core';
 
 function readStringFlag(flags: Record<string, string | boolean>, name: string): string {
   const value = flags[name];

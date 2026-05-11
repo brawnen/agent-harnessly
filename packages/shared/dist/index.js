@@ -1,7 +1,7 @@
 // src/index.ts
 import { ZodError, z } from "zod";
-var SHARED_PACKAGE_NAME = "@harnessly/shared";
-var HARNESSLY_VERSION = "0.0.0";
+var SHARED_PACKAGE_NAME = "@brawnen/harnessly-shared";
+var HARNESSLY_VERSION = "0.1.0-alpha.0";
 var packageInfo = {
   name: SHARED_PACKAGE_NAME,
   version: HARNESSLY_VERSION

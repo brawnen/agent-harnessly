@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EvidenceBaseline, EvidenceResult } from '@harnessly/shared';
+import type { EvidenceBaseline, EvidenceResult } from '@brawnen/harnessly-shared';
 
 import { evaluateCommitGate } from './gate';
 

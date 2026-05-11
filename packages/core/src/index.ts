@@ -1,4 +1,4 @@
-import { packageInfo as sharedPackageInfo } from '@harnessly/shared';
+import { packageInfo as sharedPackageInfo } from '@brawnen/harnessly-shared';
 
 export * from './agent';
 export * from './archive';
@@ -27,7 +27,7 @@ export * from './template';
 export * from './validation';
 export * from './workflow';
 
-export const CORE_PACKAGE_NAME = '@harnessly/core';
+export const CORE_PACKAGE_NAME = '@brawnen/harnessly-core';
 
 export interface CorePackageInfo {
   name: string;
@@ -38,7 +38,7 @@ export interface CorePackageInfo {
 export function getCorePackageInfo(): CorePackageInfo {
   return {
     name: CORE_PACKAGE_NAME,
-    version: '0.0.0',
+    version: '0.1.0-alpha.0',
     dependsOn: [sharedPackageInfo.name],
   };
 }

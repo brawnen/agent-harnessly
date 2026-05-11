@@ -2,8 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { TaskManager } from '@harnessly/core';
-import type { Contract } from '@harnessly/shared';
+import { TaskManager } from '@brawnen/harnessly-core';
+import type { Contract } from '@brawnen/harnessly-shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runInit } from './init';

@@ -31,7 +31,7 @@ __export(index_exports, {
   serializeHostManifest: () => serializeHostManifest
 });
 module.exports = __toCommonJS(index_exports);
-var import_shared = require("@harnessly/shared");
+var import_harnessly_shared = require("@brawnen/harnessly-shared");
 function getRepoLocalShellPaths(host) {
   switch (host) {
     case "claude-code":
@@ -119,7 +119,7 @@ function createHostManifest(host, binaryName = "harnessly") {
   const lifecycle = createLifecycleCommands(binaryName);
   return {
     host,
-    version: import_shared.HARNESSLY_VERSION,
+    version: import_harnessly_shared.HARNESSLY_VERSION,
     enabled: true,
     repoLocalPaths: getRepoLocalShellPaths(host),
     sessionStartCommand: lifecycle.sessionStart,
@@ -131,7 +131,7 @@ function getHostManifestFilename(host) {
   return `${host}.yaml`;
 }
 function serializeHostManifest(manifest) {
-  return (0, import_shared.serializeFlatYaml)({
+  return (0, import_harnessly_shared.serializeFlatYaml)({
     host: manifest.host,
     version: manifest.version,
     enabled: manifest.enabled,
@@ -142,13 +142,13 @@ function serializeHostManifest(manifest) {
   });
 }
 function parseHostManifest(text) {
-  const raw = (0, import_shared.parseFlatYaml)(text);
+  const raw = (0, import_harnessly_shared.parseFlatYaml)(text);
   const host = raw.host ?? "claude-code";
   return {
     host,
-    version: raw.version ?? import_shared.HARNESSLY_VERSION,
-    enabled: (0, import_shared.parseBoolean)(raw.enabled, true),
-    repoLocalPaths: (0, import_shared.parseStringList)(raw.repo_local_paths),
+    version: raw.version ?? import_harnessly_shared.HARNESSLY_VERSION,
+    enabled: (0, import_harnessly_shared.parseBoolean)(raw.enabled, true),
+    repoLocalPaths: (0, import_harnessly_shared.parseStringList)(raw.repo_local_paths),
     sessionStartCommand: raw.session_start_command ?? "harnessly host session-start",
     userPromptSubmitCommand: raw.user_prompt_submit_command ?? "harnessly host user-prompt-submit",
     completionGateCommand: raw.completion_gate_command ?? "harnessly host completion-gate"

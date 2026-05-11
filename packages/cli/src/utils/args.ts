@@ -9,6 +9,7 @@ const BOOLEAN_FLAGS = new Set([
   'deep-eval',
   'json',
   'force',
+  'last',
 ]);
 
 export function parseArgs(argv: string[]): ParsedArgs {

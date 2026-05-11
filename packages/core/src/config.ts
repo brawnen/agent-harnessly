@@ -6,7 +6,7 @@ import {
   parseHarnessConfig as parseHarnessConfigFromShared,
   serializeHarnessConfig as serializeHarnessConfigFromShared,
   type ProjectType,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { getDefaultRequiredChecks } from './project';
 

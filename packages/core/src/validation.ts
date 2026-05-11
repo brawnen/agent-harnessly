@@ -3,7 +3,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 
-import type { Contract, EvidenceCheckResult } from '@harnessly/shared';
+import type { Contract, EvidenceCheckResult } from '@brawnen/harnessly-shared';
 
 const execAsync = promisify(exec);
 

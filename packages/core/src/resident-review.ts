@@ -9,7 +9,7 @@ import type {
   ResidentReviewResult,
   ReviewAgentConfig,
   ReviewAgentsConfig,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { getHarnessPaths } from './scaffold';
 import { TaskManager } from './task';

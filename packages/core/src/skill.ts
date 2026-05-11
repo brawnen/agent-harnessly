@@ -11,7 +11,7 @@ import {
   type ProjectType,
   type RequiredCheck,
   type Skill,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { getHarnessPaths, writeFileIfChanged } from './scaffold';
 

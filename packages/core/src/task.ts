@@ -17,7 +17,7 @@ import {
   type TaskSummary,
   serializeContract,
   serializeTaskReport,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { appendFeedbackEntry, buildFeedbackEntry } from './feedback-pool';
 import { loadHarnessConfig } from './scaffold';

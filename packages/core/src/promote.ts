@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { Contract, HarnessConfig, TaskReport, TemplateDraft } from '@harnessly/shared';
-import { serializeTemplateDraft } from '@harnessly/shared';
+import type { Contract, HarnessConfig, TaskReport, TemplateDraft } from '@brawnen/harnessly-shared';
+import { serializeTemplateDraft } from '@brawnen/harnessly-shared';
 
 function slugify(input: string): string {
   return input

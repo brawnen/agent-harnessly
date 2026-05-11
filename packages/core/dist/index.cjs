@@ -127,19 +127,19 @@ __export(index_exports, {
   writeHarnessConfig: () => writeHarnessConfig
 });
 module.exports = __toCommonJS(index_exports);
-var import_shared12 = require("@harnessly/shared");
+var import_harnessly_shared12 = require("@brawnen/harnessly-shared");
 
 // src/agent.ts
 var import_promises3 = require("fs/promises");
 var import_node_path3 = __toESM(require("path"), 1);
-var import_shared2 = require("@harnessly/shared");
+var import_harnessly_shared2 = require("@brawnen/harnessly-shared");
 
 // src/scaffold.ts
 var import_promises2 = require("fs/promises");
 var import_node_path2 = __toESM(require("path"), 1);
 
 // src/config.ts
-var import_shared = require("@harnessly/shared");
+var import_harnessly_shared = require("@brawnen/harnessly-shared");
 
 // src/project.ts
 var import_promises = require("fs/promises");
@@ -197,7 +197,7 @@ function getDefaultAdapterCommand(defaultHost) {
 function createDefaultHarnessConfig(projectType, hosts = ["claude-code"]) {
   const defaultHost = hosts[0] ?? "claude-code";
   return {
-    version: Number(import_shared.HARNESSLY_VERSION.split(".")[0] ?? "0") + 1,
+    version: Number(import_harnessly_shared.HARNESSLY_VERSION.split(".")[0] ?? "0") + 1,
     projectType,
     requiredChecks: getDefaultRequiredChecks(projectType),
     defaultHost,
@@ -211,10 +211,10 @@ function createDefaultHarnessConfig(projectType, hosts = ["claude-code"]) {
   };
 }
 function serializeHarnessConfig(config) {
-  return (0, import_shared.serializeHarnessConfig)(config);
+  return (0, import_harnessly_shared.serializeHarnessConfig)(config);
 }
 function parseHarnessConfig(text) {
-  return (0, import_shared.parseHarnessConfig)(text);
+  return (0, import_harnessly_shared.parseHarnessConfig)(text);
 }
 
 // src/scaffold.ts
@@ -495,7 +495,7 @@ async function loadAgentManifest(workDir, role) {
   if (yamlText === null) {
     return null;
   }
-  const manifest = (0, import_shared2.parseAgentManifestYaml)(yamlText);
+  const manifest = (0, import_harnessly_shared2.parseAgentManifestYaml)(yamlText);
   const promptText = await readFileIfExists(promptPath) ?? "";
   return {
     ...manifest,
@@ -598,7 +598,7 @@ async function writeDefaultAgentManifests(workDir, force = false) {
     const { manifestPath, promptPath } = getAgentDiskFiles(workDir, role);
     const manifestStatus = await writeIfMissingOrForced(
       manifestPath,
-      (0, import_shared2.serializeAgentManifestYaml)(manifest),
+      (0, import_harnessly_shared2.serializeAgentManifestYaml)(manifest),
       force
     );
     const promptStatus = await writeIfMissingOrForced(promptPath, manifest.prompt, force);
@@ -610,18 +610,18 @@ async function writeDefaultAgentManifests(workDir, force = false) {
 // src/archive.ts
 var import_promises6 = require("fs/promises");
 var import_node_path6 = __toESM(require("path"), 1);
-var import_shared5 = require("@harnessly/shared");
+var import_harnessly_shared5 = require("@brawnen/harnessly-shared");
 
 // src/task.ts
 var import_node_crypto = __toESM(require("crypto"), 1);
 var import_promises5 = require("fs/promises");
 var import_node_path5 = __toESM(require("path"), 1);
-var import_shared4 = require("@harnessly/shared");
+var import_harnessly_shared4 = require("@brawnen/harnessly-shared");
 
 // src/feedback-pool.ts
 var import_promises4 = require("fs/promises");
 var import_node_path4 = __toESM(require("path"), 1);
-var import_shared3 = require("@harnessly/shared");
+var import_harnessly_shared3 = require("@brawnen/harnessly-shared");
 var FEEDBACK_POOL_FILENAME = "feedback-pool.jsonl";
 function getFeedbackPoolPath(workDir) {
   return import_node_path4.default.join(getHarnessPaths(workDir).harnessDir, FEEDBACK_POOL_FILENAME);
@@ -656,10 +656,10 @@ function buildFeedbackEntry(ctx, report) {
       entry.failureStage = ctx.state.lastFailureStage;
     }
   }
-  return import_shared3.feedbackEntrySchema.parse(entry);
+  return import_harnessly_shared3.feedbackEntrySchema.parse(entry);
 }
 async function appendFeedbackEntry(workDir, entry) {
-  const validated = import_shared3.feedbackEntrySchema.parse(entry);
+  const validated = import_harnessly_shared3.feedbackEntrySchema.parse(entry);
   const filePath = getFeedbackPoolPath(workDir);
   await (0, import_promises4.mkdir)(import_node_path4.default.dirname(filePath), { recursive: true });
   await (0, import_promises4.appendFile)(filePath, `${JSON.stringify(validated)}
@@ -682,7 +682,7 @@ async function loadFeedbackPool(workDir) {
     if (!line) continue;
     try {
       const parsed = JSON.parse(line);
-      const entry = import_shared3.feedbackEntrySchema.parse(parsed);
+      const entry = import_harnessly_shared3.feedbackEntrySchema.parse(parsed);
       entries.push(entry);
     } catch {
     }
@@ -1038,7 +1038,7 @@ var TaskManager = class {
   async saveContract(ctx, contract) {
     ctx.contract = contract;
     ctx.state = touchState(ctx.state, "active", "spec");
-    await (0, import_promises5.writeFile)(this.getContractFile(ctx.taskDir), (0, import_shared4.serializeContract)(contract), "utf8");
+    await (0, import_promises5.writeFile)(this.getContractFile(ctx.taskDir), (0, import_harnessly_shared4.serializeContract)(contract), "utf8");
     await this.saveState(ctx);
   }
   async saveRequirement(ctx, requirement) {
@@ -1075,7 +1075,7 @@ var TaskManager = class {
   }
   async saveReport(ctx, report) {
     ctx.state = touchState(ctx.state, report.commitReady ? "completed" : "blocked", "commit_gate");
-    await (0, import_promises5.writeFile)(this.getReportFile(ctx.taskDir), (0, import_shared4.serializeTaskReport)(report), "utf8");
+    await (0, import_promises5.writeFile)(this.getReportFile(ctx.taskDir), (0, import_harnessly_shared4.serializeTaskReport)(report), "utf8");
     await this.saveState(ctx);
     if (report.commitGate.decision === "pass") {
       try {
@@ -1133,7 +1133,7 @@ ${content}
   async loadReport(taskId, workDir) {
     const taskDir = this.getTaskDir(workDir, taskId);
     try {
-      return (0, import_shared4.parseTaskReport)(await (0, import_promises5.readFile)(this.getReportFile(taskDir), "utf8"));
+      return (0, import_harnessly_shared4.parseTaskReport)(await (0, import_promises5.readFile)(this.getReportFile(taskDir), "utf8"));
     } catch (error) {
       if (isMissingFileError3(error)) {
         return null;
@@ -1167,7 +1167,7 @@ ${content}
       state
     };
     try {
-      ctx.contract = (0, import_shared4.parseContract)(await (0, import_promises5.readFile)(this.getContractFile(taskDir), "utf8"));
+      ctx.contract = (0, import_harnessly_shared4.parseContract)(await (0, import_promises5.readFile)(this.getContractFile(taskDir), "utf8"));
     } catch (error) {
       if (!isMissingFileError3(error)) {
         throw error;
@@ -1248,7 +1248,7 @@ function pickFilesByKind(kind) {
   };
 }
 function readTaskReportSafe(filePath) {
-  return (0, import_promises6.readFile)(filePath, "utf8").then((text) => (0, import_shared5.parseTaskReport)(text)).catch((error) => {
+  return (0, import_promises6.readFile)(filePath, "utf8").then((text) => (0, import_harnessly_shared5.parseTaskReport)(text)).catch((error) => {
     if (isMissingFileError4(error)) return null;
     return null;
   });
@@ -1259,7 +1259,7 @@ function getHarnessMetaPath(topicDir) {
 async function loadHarnessMeta(topicDir) {
   try {
     const text = await (0, import_promises6.readFile)(getHarnessMetaPath(topicDir), "utf8");
-    return import_shared5.harnessMetaFileSchema.parse(JSON.parse(text));
+    return import_harnessly_shared5.harnessMetaFileSchema.parse(JSON.parse(text));
   } catch (error) {
     if (isMissingFileError4(error)) return null;
     return null;
@@ -1726,7 +1726,7 @@ async function readActiveTaskId(workDir) {
 }
 
 // src/contract.ts
-var import_shared6 = require("@harnessly/shared");
+var import_harnessly_shared6 = require("@brawnen/harnessly-shared");
 
 // src/template.ts
 var builtinTemplates = [
@@ -1865,11 +1865,11 @@ async function generateContract(options) {
     const generated = await options.llmClient.generateStructured({
       prompt: createContractPrompt(options.goal, options.templateName, fallback),
       systemPrompt: createContractSystemPrompt(),
-      schema: import_shared6.contractSchema,
+      schema: import_harnessly_shared6.contractSchema,
       toolName: "emit_contract",
       toolDescription: "\u8F93\u51FA Harnessly contract"
     });
-    return (0, import_shared6.validateContract)({
+    return (0, import_harnessly_shared6.validateContract)({
       ...fallback,
       ...generated,
       version: "2.0",
@@ -1983,7 +1983,7 @@ var import_promises8 = require("fs/promises");
 var import_node_child_process = require("child_process");
 var import_node_util = require("util");
 var import_node_path8 = __toESM(require("path"), 1);
-var import_shared7 = require("@harnessly/shared");
+var import_harnessly_shared7 = require("@brawnen/harnessly-shared");
 var execAsync = (0, import_node_util.promisify)(import_node_child_process.exec);
 function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -2005,13 +2005,13 @@ async function loadSkill(workDir, checkName, language) {
   if (!await fileExists3(filePath)) {
     return null;
   }
-  const raw = (0, import_shared7.parseFlatYaml)(await (0, import_promises8.readFile)(filePath, "utf8"));
-  return import_shared7.skillSchema.parse({
+  const raw = (0, import_harnessly_shared7.parseFlatYaml)(await (0, import_promises8.readFile)(filePath, "utf8"));
+  return import_harnessly_shared7.skillSchema.parse({
     name: raw.name ?? checkName,
     language: raw.language ?? language,
     command: raw.command ?? "",
     successExitCode: Number(raw.success_exit_code ?? "0"),
-    envRequired: (0, import_shared7.parseStringList)(raw.env_required),
+    envRequired: (0, import_harnessly_shared7.parseStringList)(raw.env_required),
     detailOnPass: raw.detail_on_pass ?? `${checkName} \u901A\u8FC7`,
     detailOnFailTemplate: raw.detail_on_fail_template ?? `${checkName} \u5931\u8D25`,
     fixHintTemplate: raw.fix_hint_template ?? `\u4FEE\u590D ${checkName} \u5931\u8D25\u540E\u91CD\u8DD1`
@@ -2264,7 +2264,7 @@ async function collectEvidence(workDir, config, contract) {
 // src/evidence-baseline.ts
 var import_promises10 = require("fs/promises");
 var import_node_path10 = __toESM(require("path"), 1);
-var import_shared8 = require("@harnessly/shared");
+var import_harnessly_shared8 = require("@brawnen/harnessly-shared");
 var EVIDENCE_BASELINE_FILENAME = "evidence-baseline.json";
 function getEvidenceBaselinePath(workDir) {
   return import_node_path10.default.join(getHarnessPaths(workDir).harnessDir, EVIDENCE_BASELINE_FILENAME);
@@ -2318,14 +2318,14 @@ function buildBaselineDiff(baseline, current) {
   };
 }
 async function saveEvidenceSnapshot(taskDir, kind, snapshot) {
-  const validated = import_shared8.evidenceSnapshotSchema.parse(snapshot);
+  const validated = import_harnessly_shared8.evidenceSnapshotSchema.parse(snapshot);
   const filePath = getTaskEvidencePath(taskDir, kind);
   await (0, import_promises10.mkdir)(import_node_path10.default.dirname(filePath), { recursive: true });
   await (0, import_promises10.writeFile)(filePath, `${JSON.stringify(validated, null, 2)}
 `, "utf8");
 }
 async function saveBaselineDiff(taskDir, diff) {
-  const validated = import_shared8.baselineDiffSchema.parse(diff);
+  const validated = import_harnessly_shared8.baselineDiffSchema.parse(diff);
   const filePath = getTaskEvidencePath(taskDir, "baseline-diff");
   await (0, import_promises10.mkdir)(import_node_path10.default.dirname(filePath), { recursive: true });
   await (0, import_promises10.writeFile)(filePath, `${JSON.stringify(validated, null, 2)}
@@ -2342,13 +2342,13 @@ async function loadEvidenceBaseline(workDir) {
   }
   try {
     const raw = JSON.parse(text);
-    return import_shared8.evidenceBaselineSchema.parse(raw);
+    return import_harnessly_shared8.evidenceBaselineSchema.parse(raw);
   } catch {
     return null;
   }
 }
 async function saveEvidenceBaseline(workDir, baseline) {
-  const validated = import_shared8.evidenceBaselineSchema.parse(baseline);
+  const validated = import_harnessly_shared8.evidenceBaselineSchema.parse(baseline);
   const filePath = getEvidenceBaselinePath(workDir);
   await (0, import_promises10.mkdir)(import_node_path10.default.dirname(filePath), { recursive: true });
   await (0, import_promises10.writeFile)(filePath, `${JSON.stringify(validated, null, 2)}
@@ -2581,7 +2581,7 @@ function generatePlan(contract) {
 // src/promote.ts
 var import_promises11 = require("fs/promises");
 var import_node_path11 = __toESM(require("path"), 1);
-var import_shared9 = require("@harnessly/shared");
+var import_harnessly_shared9 = require("@brawnen/harnessly-shared");
 function slugify(input) {
   return input.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "template";
 }
@@ -2609,7 +2609,7 @@ async function saveTemplateDraft(workDir, template) {
   const templatesDir = import_node_path11.default.join(workDir, ".harness", "templates");
   const filePath = import_node_path11.default.join(templatesDir, `${template.name}.yaml`);
   await (0, import_promises11.mkdir)(templatesDir, { recursive: true });
-  await (0, import_promises11.writeFile)(filePath, (0, import_shared9.serializeTemplateDraft)(template), "utf8");
+  await (0, import_promises11.writeFile)(filePath, (0, import_harnessly_shared9.serializeTemplateDraft)(template), "utf8");
   return filePath;
 }
 
@@ -2738,7 +2738,7 @@ function assemblePrompt(ctx) {
 }
 
 // src/report.ts
-var import_shared10 = require("@harnessly/shared");
+var import_harnessly_shared10 = require("@brawnen/harnessly-shared");
 function buildSummary(commitGate) {
   const preExistingHint = commitGate.preExistingFailures.length > 0 ? `\uFF08\u5DF2\u5FFD\u7565 baseline \u65E7\u5931\u8D25\uFF1A${commitGate.preExistingFailures.join(", ")}\uFF09` : "";
   if (commitGate.decision === "pass") {
@@ -2753,7 +2753,7 @@ function buildSummary(commitGate) {
 }
 function createTaskReport(ctx, adapter, evidence, commitGate) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  return (0, import_shared10.validateTaskReport)({
+  return (0, import_harnessly_shared10.validateTaskReport)({
     taskId: ctx.taskId,
     goal: ctx.goal,
     finalStage: "commit_gate",
@@ -3104,7 +3104,7 @@ async function runStructureCheck(workDir, changedFiles) {
 }
 
 // src/workflow.ts
-var import_shared11 = require("@harnessly/shared");
+var import_harnessly_shared11 = require("@brawnen/harnessly-shared");
 function markCompleted(ctx, stage) {
   if (!ctx.state.completedStages.includes(stage)) {
     ctx.state.completedStages = [...ctx.state.completedStages, stage];
@@ -3321,7 +3321,7 @@ var WorkflowEngine = class {
     }
     await this.manager.saveContract(ctx, contract);
     const requirement = renderRequirementMarkdown(contract);
-    const requirementFailures = (0, import_shared11.validateRequirementMarkdown)(requirement);
+    const requirementFailures = (0, import_harnessly_shared11.validateRequirementMarkdown)(requirement);
     if (requirementFailures.length > 0) {
       await this.manager.markFailure(ctx, "spec", requirementFailures.join("; "));
       throw new Error(`requirement gate \u5931\u8D25: ${requirementFailures.join("; ")}`);
@@ -3345,7 +3345,7 @@ var WorkflowEngine = class {
     await this.manager.saveState(ctx);
     const plan = generatePlan(ctx.contract);
     const design = renderDesignMarkdown(ctx.contract);
-    const designFailures = (0, import_shared11.validateDesignMarkdown)(design);
+    const designFailures = (0, import_harnessly_shared11.validateDesignMarkdown)(design);
     if (designFailures.length > 0) {
       await this.manager.markFailure(ctx, "design", designFailures.join("; "));
       throw new Error(`design gate \u5931\u8D25: ${designFailures.join("; ")}`);
@@ -3511,12 +3511,12 @@ var WorkflowEngine = class {
 };
 
 // src/index.ts
-var CORE_PACKAGE_NAME = "@harnessly/core";
+var CORE_PACKAGE_NAME = "@brawnen/harnessly-core";
 function getCorePackageInfo() {
   return {
     name: CORE_PACKAGE_NAME,
-    version: "0.0.0",
-    dependsOn: [import_shared12.packageInfo.name]
+    version: "0.1.0-alpha.0",
+    dependsOn: [import_harnessly_shared12.packageInfo.name]
   };
 }
 // Annotate the CommonJS export names for ESM import in node:

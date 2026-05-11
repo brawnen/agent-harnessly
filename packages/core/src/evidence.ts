@@ -5,7 +5,7 @@ import type {
   Contract,
   EvidenceResult,
   HarnessConfig,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { runScopeCheck } from './scope';
 import { runSkillCheck } from './skill';

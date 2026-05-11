@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Contract } from '@harnessly/shared';
+import type { Contract } from '@brawnen/harnessly-shared';
 
 import { checkContract, generateContract, generateFallbackContract } from './contract';
 import type { LLMClient } from './llm';

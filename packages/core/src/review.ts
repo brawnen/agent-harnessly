@@ -1,4 +1,4 @@
-import type { EvidenceCheckResult } from '@harnessly/shared';
+import type { EvidenceCheckResult } from '@brawnen/harnessly-shared';
 
 /**
  * review 阶段的轻量静态检查（占位实现）。

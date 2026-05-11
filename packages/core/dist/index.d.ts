@@ -1,4 +1,4 @@
-import { AgentRole, AgentManifest, StageMarker, AssetPromotion, HarnessMetaFile, SourceTaskEntry, ArchiveTopicSummary, ArchiveTopicDetail, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, PromoteAction, TaskContext, TaskReport, Finding, FindingGroup, CommitGateResult, RequiredCheck, TemplateDraft, ResidentReviewResult, Skill, TaskSummary, RiskLevel } from '@harnessly/shared';
+import { AgentRole, AgentManifest, StageMarker, AssetPromotion, HarnessMetaFile, SourceTaskEntry, ArchiveTopicSummary, ArchiveTopicDetail, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, PromoteAction, TaskContext, TaskReport, Finding, FindingGroup, CommitGateResult, RequiredCheck, TemplateDraft, ResidentReviewResult, Skill, TaskSummary, RiskLevel } from '@brawnen/harnessly-shared';
 import { z } from 'zod';
 
 /**
@@ -566,7 +566,7 @@ declare class WorkflowEngine {
     private executeCommitGateStage;
 }
 
-declare const CORE_PACKAGE_NAME = "@harnessly/core";
+declare const CORE_PACKAGE_NAME = "@brawnen/harnessly-core";
 interface CorePackageInfo {
     name: string;
     version: string;

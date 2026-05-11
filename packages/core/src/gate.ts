@@ -3,7 +3,7 @@ import type {
   CommitGateResult,
   EvidenceBaseline,
   EvidenceResult,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 export interface EvaluateCommitGateOptions {
   /**

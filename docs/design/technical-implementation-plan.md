@@ -24,7 +24,7 @@
 | Playwright | @playwright/test | Level 2 evidence 的 contract 驱动验证 |
 | 测试 | Vitest | 快、ESM 原生、兼容 Jest API |
 | 构建 | tsup | 零配置打包，支持 ESM + CJS |
-| 分发 | npm publish + 可选 pkg 打包单二进制 | `npm i -g @harnessly/cli` 或下载二进制 |
+| 分发 | npm publish + 可选 pkg 打包单二进制 | `npm i -g @brawnen/harnessly` 或下载二进制 |
 
 ---
 
@@ -2359,7 +2359,7 @@ harnessly 在技术上严格只管理第三层，对前两层保持透明：
 |---|---|
 | 错误处理 + 边界情况 | 超时、agent 崩溃、网络断开 |
 | CLI 体验打磨 | 进度条、颜色、错误提示 |
-| npm 发布配置 | `@harnessly/cli` |
+| npm 发布配置 | `@brawnen/harnessly` |
 | 基础文档 | README + 快速开始 |
 | 在 3-5 个真实项目上做端到端测试 | 验证报告 |
 

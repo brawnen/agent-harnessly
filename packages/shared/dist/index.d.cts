@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-declare const SHARED_PACKAGE_NAME = "@harnessly/shared";
-declare const HARNESSLY_VERSION = "0.0.0";
+declare const SHARED_PACKAGE_NAME = "@brawnen/harnessly-shared";
+declare const HARNESSLY_VERSION = "0.1.0-alpha.0";
 type HostName = 'claude-code' | 'codex' | 'gemini-cli';
 type ProjectType = 'node' | 'go' | 'python' | 'unknown';
 type RequiredCheck = 'build' | 'lint' | 'typecheck' | 'test';

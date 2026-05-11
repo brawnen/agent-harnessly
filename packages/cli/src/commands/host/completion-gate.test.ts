@@ -8,8 +8,8 @@ const { collectChangedFilesMock } = vi.hoisted(() => ({
   collectChangedFilesMock: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock('@harnessly/core', async () => {
-  const actual = await vi.importActual<typeof import('@harnessly/core')>('@harnessly/core');
+vi.mock('@brawnen/harnessly-core', async () => {
+  const actual = await vi.importActual<typeof import('@brawnen/harnessly-core')>('@brawnen/harnessly-core');
   return {
     ...actual,
     collectChangedFiles: collectChangedFilesMock,

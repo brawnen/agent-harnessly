@@ -7,12 +7,12 @@ import type {
   EvidenceBaseline,
   EvidenceResult,
   EvidenceSnapshot,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 import {
   baselineDiffSchema,
   evidenceBaselineSchema,
   evidenceSnapshotSchema,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import { getHarnessPaths } from './scaffold';
 

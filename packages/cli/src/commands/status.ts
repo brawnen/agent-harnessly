@@ -1,4 +1,4 @@
-import { TaskManager } from '@harnessly/core';
+import { TaskManager } from '@brawnen/harnessly-core';
 
 import { collectHostStatus, readActiveTaskId } from '../utils/hosts';
 import { printJson, printLines } from '../utils/output';

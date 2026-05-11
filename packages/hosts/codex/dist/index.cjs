@@ -30,9 +30,9 @@ __export(index_exports, {
   renderCodexUserPromptSubmitHook: () => renderCodexUserPromptSubmitHook
 });
 module.exports = __toCommonJS(index_exports);
-var import_host_shared = require("@harnessly/host-shared");
+var import_harnessly_host_shared = require("@brawnen/harnessly-host-shared");
 function getCodexHostManifest() {
-  return (0, import_host_shared.createHostManifest)("codex");
+  return (0, import_harnessly_host_shared.createHostManifest)("codex");
 }
 function renderCodexConfig() {
   return ["# Managed by Harnessly", "[features]", "codex_hooks = true", ""].join("\n");
@@ -363,7 +363,7 @@ function renderCodexManagedFiles(manifest, options = {}) {
     if (!agentManifest.enabled) {
       continue;
     }
-    files[`.codex/agents/harness-${agentManifest.role}.toml`] = (0, import_host_shared.renderCodexSubagentFile)(agentManifest);
+    files[`.codex/agents/harness-${agentManifest.role}.toml`] = (0, import_harnessly_host_shared.renderCodexSubagentFile)(agentManifest);
   }
   return files;
 }

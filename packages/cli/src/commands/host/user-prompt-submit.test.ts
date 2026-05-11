@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runInit } from '../init';
+import { runIntake } from '../intake';
 import { runHostUserPromptSubmit } from './user-prompt-submit';
 
 async function createTempDir(): Promise<string> {
@@ -102,6 +103,32 @@ describe('host user-prompt-submit command', () => {
     expect(tasks).toEqual([]);
     expect(events).toContain('"type":"host.intake_decision"');
     expect(events).toContain('"taskKind":"question"');
+  });
+
+  it('should treat unknown or mechanism questions as chat instead of defaulting to new task', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '现在 intake classifier 依据什么来判断是否是新任务呢' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      taskCreated: boolean;
+      reason: string;
+      taskKind: string;
+      confidence: number;
+    };
+    const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
+
+    expect(payload.action).toBe('chat');
+    expect(payload.taskCreated).toBe(false);
+    expect(payload.reason).toBe('ambiguous_intent');
+    expect(payload.taskKind).toBe('question');
+    expect(payload.confidence).toBeLessThan(0.7);
+    expect(tasks).toEqual([]);
   });
 
   it('should delegate new tasks to v3-core requirement role by default', async () => {
@@ -362,6 +389,51 @@ describe('host user-prompt-submit command', () => {
     // 验证降级后 pending file 已清理
     const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
     expect(tasks).toEqual([payload2.taskId]);
+  });
+
+  it('should learn exact manual feedback from the last intake decision', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    const prompt = '优化 hook 配置的判断依据';
+    const firstOutput = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt }, []),
+    );
+    const first = JSON.parse(firstOutput) as {
+      action: string;
+      reason: string;
+    };
+    expect(first.action).toBe('delegate_to_planner');
+    expect(first.reason).toBe('matched_change_intent');
+
+    await captureStdout(() =>
+      runIntake(
+        { last: true, actual: 'chat', reason: 'question_about_harnessly_mechanism' },
+        ['feedback', 'add'],
+      ),
+    );
+
+    const secondOutput = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt }, []),
+    );
+    const second = JSON.parse(secondOutput) as {
+      action: string;
+      taskCreated: boolean;
+      reason: string;
+      learnedFrom: string[];
+    };
+    const feedbackText = await readFile(path.join(workDir, '.harness', 'intake-feedback.jsonl'), 'utf8');
+    const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
+
+    expect(second.action).toBe('chat');
+    expect(second.taskCreated).toBe(false);
+    expect(second.reason).toBe('learned_exact_feedback');
+    expect(second.learnedFrom.length).toBe(1);
+    expect(feedbackText).toContain('question_about_harnessly_mechanism');
+    expect(tasks).toEqual([]);
   });
 
   it('should not fallback for resume prompts even after a failed delegation', async () => {

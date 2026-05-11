@@ -1,5 +1,5 @@
-import { TaskManager, WorkflowEngine } from '@harnessly/core';
-import type { AdapterKind } from '@harnessly/shared';
+import { TaskManager, WorkflowEngine } from '@brawnen/harnessly-core';
+import type { AdapterKind } from '@brawnen/harnessly-shared';
 
 import { printLines } from '../utils/output';
 

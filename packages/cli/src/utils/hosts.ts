@@ -1,21 +1,21 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getHarnessPaths, loadAgentManifests, loadHarnessConfig } from '@harnessly/core';
-import { renderClaudeCodeManagedFiles } from '@harnessly/host-claude-code';
-import { renderCodexManagedFiles } from '@harnessly/host-codex';
+import { getHarnessPaths, loadAgentManifests, loadHarnessConfig } from '@brawnen/harnessly-core';
+import { renderClaudeCodeManagedFiles } from '@brawnen/harnessly-host-claude-code';
+import { renderCodexManagedFiles } from '@brawnen/harnessly-host-codex';
 import {
   createHostManifest,
   getHostManifestFilename,
   parseHostManifest,
   serializeHostManifest,
-} from '@harnessly/host-shared';
+} from '@brawnen/harnessly-host-shared';
 import type {
   AgentManifest,
   HarnessConfig,
   HostManifest,
   HostName,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 async function readFileIfExists(filePath: string): Promise<string | null> {
   try {

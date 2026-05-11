@@ -8,7 +8,7 @@ import {
   parseAgentManifestYaml,
   serializeAgentManifestYaml,
   type AgentManifest,
-} from '@harnessly/shared';
+} from '@brawnen/harnessly-shared';
 
 import {
   AGENT_ROLES,
@@ -267,7 +267,7 @@ describe('collectEnabledRoles', () => {
 });
 
 describe('pickRecommendedAgent', () => {
-  const allEnabled = new Set<import('@harnessly/shared').AgentRole>([
+  const allEnabled = new Set<import('@brawnen/harnessly-shared').AgentRole>([
     'requirement',
     'designer',
     'developer',
@@ -281,7 +281,7 @@ describe('pickRecommendedAgent', () => {
     });
 
     it('returns null when requirement is disabled (no v2 composite alias)', () => {
-      const enabled = new Set<import('@harnessly/shared').AgentRole>(['designer', 'reviewer']);
+      const enabled = new Set<import('@brawnen/harnessly-shared').AgentRole>(['designer', 'reviewer']);
       expect(pickRecommendedAgent('new_task', null, enabled)).toBeNull();
     });
   });
@@ -318,7 +318,7 @@ describe('pickRecommendedAgent', () => {
     });
 
     it('returns null when stage role is not enabled', () => {
-      const onlyTester = new Set<import('@harnessly/shared').AgentRole>(['tester']);
+      const onlyTester = new Set<import('@brawnen/harnessly-shared').AgentRole>(['tester']);
       expect(pickRecommendedAgent('resume_task', 'spec', onlyTester)).toBeNull();
     });
   });
@@ -348,12 +348,12 @@ describe('pickRecommendedAgent', () => {
     });
 
     it('falls back to tester when reviewer disabled', () => {
-      const enabled = new Set<import('@harnessly/shared').AgentRole>(['tester']);
+      const enabled = new Set<import('@brawnen/harnessly-shared').AgentRole>(['tester']);
       expect(pickRecommendedAgent('completion_review', null, enabled)).toBe('harness-tester');
     });
 
     it('returns null when no v3-core role is enabled at all', () => {
-      const empty = new Set<import('@harnessly/shared').AgentRole>();
+      const empty = new Set<import('@brawnen/harnessly-shared').AgentRole>();
       expect(pickRecommendedAgent('completion_review', 'review', empty)).toBeNull();
     });
   });

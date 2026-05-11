@@ -1,5 +1,5 @@
-import { collectEvidence, createTaskReport, evaluateCommitGate, TaskManager } from '@harnessly/core';
-import type { AdapterOutput } from '@harnessly/shared';
+import { collectEvidence, createTaskReport, evaluateCommitGate, TaskManager } from '@brawnen/harnessly-core';
+import type { AdapterOutput } from '@brawnen/harnessly-shared';
 
 import { appendHarnessEvent } from '../utils/events';
 import { printLines } from '../utils/output';

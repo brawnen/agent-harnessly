@@ -1,4 +1,4 @@
-import type { FeedbackEntry, StageMarker, TaskContext } from '@harnessly/shared';
+import type { FeedbackEntry, StageMarker, TaskContext } from '@brawnen/harnessly-shared';
 
 /**
  * 各 stage 下给 PM / coding agent 的执行指令片段。

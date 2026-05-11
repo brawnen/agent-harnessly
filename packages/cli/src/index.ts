@@ -2,9 +2,10 @@
 
 import { fileURLToPath } from 'node:url';
 
-import { getCorePackageInfo } from '@harnessly/core';
+import { getCorePackageInfo } from '@brawnen/harnessly-core';
 
 import { runCli } from './run-cli';
+import { CLI_PACKAGE_NAME, CLI_VERSION } from './version';
 
 export interface CliRuntimeSummary {
   packageName: string;
@@ -14,8 +15,8 @@ export interface CliRuntimeSummary {
 
 export function getCliRuntimeSummary(): CliRuntimeSummary {
   return {
-    packageName: '@harnessly/cli',
-    version: '0.0.0',
+    packageName: CLI_PACKAGE_NAME,
+    version: CLI_VERSION,
     core: getCorePackageInfo(),
   };
 }
