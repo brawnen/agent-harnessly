@@ -1,7 +1,7 @@
 # Managed by Harnessly
 name = "harness-requirement"
 description = "在 SPEC 阶段帮 PM 澄清需求、列举可验收点"
-model = "gpt-5.4-mini"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """

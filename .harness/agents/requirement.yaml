@@ -4,6 +4,6 @@ description: 在 SPEC 阶段帮 PM 澄清需求、列举可验收点
 stage: spec
 enabled: true
 model_claude_code: haiku
-model_codex: gpt-5.4-mini
+model_codex: gpt-5.5
 model_gemini_cli: gemini-flash
 tool_whitelist: Read,Bash

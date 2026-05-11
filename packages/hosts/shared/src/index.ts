@@ -16,8 +16,6 @@ export function getRepoLocalShellPaths(host: HostName): string[] {
     case 'claude-code':
       return [
         '.claude/settings.json',
-        '.claude/agents/harness-planner.md',
-        '.claude/agents/harness-evaluator.md',
         '.harness/hosts/claude-code/hooks/session_start.js',
         '.harness/hosts/claude-code/hooks/user_prompt_submit.js',
         '.harness/hosts/claude-code/hooks/stop.js',
@@ -31,8 +29,6 @@ export function getRepoLocalShellPaths(host: HostName): string[] {
         '.harness/hosts/codex/hooks/user_prompt_submit.js',
         '.harness/hosts/codex/hooks/stop.js',
         '.harness/hosts/codex/hooks/shared/codex-hook-io.js',
-        '.codex/agents/harness-planner.toml',
-        '.codex/agents/harness-evaluator.toml',
       ];
     case 'gemini-cli':
       return ['.gemini/settings.json'];
@@ -107,7 +103,7 @@ export function renderClaudeCodeSubagentFile(manifest: AgentManifest): string {
  * developer_instructions 用 triple-double-quote 多行字符串。
  */
 export function renderCodexSubagentFile(manifest: AgentManifest): string {
-  const model = manifest.models.codex ?? 'gpt-5.4';
+  const model = manifest.models.codex ?? 'gpt-5.5';
   const promptBody =
     manifest.prompt.trim().length > 0 ? manifest.prompt : `Harness ${manifest.role} agent.`;
 

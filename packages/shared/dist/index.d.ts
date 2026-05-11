@@ -5,11 +5,13 @@ declare const HARNESSLY_VERSION = "0.0.0";
 type HostName = 'claude-code' | 'codex' | 'gemini-cli';
 type ProjectType = 'node' | 'go' | 'python' | 'unknown';
 type RequiredCheck = 'build' | 'lint' | 'typecheck' | 'test';
+type AcceptanceVerifier = 'build' | 'lint' | 'typecheck' | 'test' | 'playwright' | 'api' | 'manual';
 type TemplateName = 'bug-fix' | 'feature-simple' | 'general-task';
 type RiskLevel = 'low' | 'medium' | 'high';
+type EstimatedComplexity = 'simple' | 'medium' | 'complex';
 type AdapterKind = 'claude-code' | 'codex' | 'custom';
 type FlatYamlValue = string | number | boolean | string[];
-type TaskStatus = 'created' | 'contracting' | 'planning' | 'ready' | 'executing' | 'verifying' | 'passed' | 'failed';
+type TaskStatus = 'active' | 'blocked' | 'completed' | 'aborted';
 /**
  * v3-core 主干工作流的 6 个固定阶段。
  * 与 SPEC §6.1 保持一致，禁止扩展为可编排 DAG。
@@ -23,6 +25,7 @@ type WorkflowStage = 'spec' | 'design' | 'execute' | 'review' | 'test' | 'commit
  * - 'retry'：重试动作（瞬态）
  */
 type StageMarker = WorkflowStage | 'created' | 'failed' | 'retry';
+type TaskOwnerRole = 'pm' | 'requirement' | 'designer' | 'developer' | 'reviewer' | 'tester';
 interface PackageInfo {
     name: string;
     version: string;
@@ -51,27 +54,39 @@ interface HarnessConfig {
     sourceOfTruthDir: string;
     fallbackCreateTaskWithoutPlanner: boolean;
     codexUserPromptSubmitHookEnabled: boolean;
-    hostSubagents: HostSubagentConfig;
     adapterKind: AdapterKind;
     adapterCommand: string;
 }
-interface HostSubagentConfig {
-    planner: {
-        useHostPlanMode: boolean;
-        models: Partial<Record<HostName, string>>;
-    };
-    evaluator: {
-        models: Partial<Record<HostName, string>>;
-    };
-}
 interface Contract {
+    version: '2.0';
+    taskId: string;
     goal: string;
+    /**
+     * 旧模板分类仍作为内部实现细节保留，不写入 v3-core contract 的规范字段。
+     */
     templateName: TemplateName;
     riskLevel: RiskLevel;
+    estimatedComplexity: EstimatedComplexity;
+    requiredChecks: RequiredCheck[];
     scopeInclude: string[];
     scopeExclude: string[];
-    acceptanceCriteria: string[];
+    acceptanceCriteria: AcceptanceCriterion[];
     outOfScope: string[];
+    linkedSpec: string;
+    linkedDesign: string;
+    assetPromotion?: AssetPromotion;
+    createdAt: string;
+}
+interface AcceptanceCriterion {
+    criterion: string;
+    verifiableBy: AcceptanceVerifier;
+    testHint?: string;
+}
+interface AssetPromotion {
+    promote: boolean;
+    topic?: string;
+    files: string[];
+    mode: 'new_topic' | 'append' | 'replace';
 }
 interface ContractGateResult {
     passed: boolean;
@@ -81,6 +96,7 @@ interface TaskState {
     taskId: string;
     status: TaskStatus;
     currentStage: StageMarker;
+    currentOwner: TaskOwnerRole;
     createdAt: string;
     updatedAt: string;
     completedStages: StageMarker[];
@@ -110,6 +126,7 @@ interface TaskSummary {
     goal: string;
     status: TaskStatus;
     currentStage: StageMarker;
+    currentOwner: TaskOwnerRole;
     retryCount: number;
     lastFailureStage?: StageMarker;
     updatedAt: string;
@@ -134,18 +151,34 @@ interface EvidenceCheckResult {
     status: CheckStatus;
     command: string;
     detail: string;
+    fixHint?: string;
+    durationMs?: number;
+    testCount?: number;
 }
 interface EvidenceResult {
     checks: EvidenceCheckResult[];
     changedFiles: string[];
+    lintWarningsTotal: number;
+    todoCount: number;
+    gitDirtyFiles: number;
+}
+interface Skill {
+    name: string;
+    language: string;
+    command: string;
+    successExitCode: number;
+    envRequired: string[];
+    detailOnPass: string;
+    detailOnFailTemplate: string;
+    fixHintTemplate: string;
 }
 /**
  * commit_gate 三态决策。
  * - 'pass': 所有硬性 gate 通过，可以 commit
- * - 'block': 存在硬性失败，禁止 commit（必须修复后重跑）
- * - 'warn': 硬性 gate 全过但有软性告警，PM 须确认后才能 commit
+ * - 'needs_human_review': 没有硬失败但需要 PM/用户确认
+ * - 'fail': 存在硬性失败，禁止 commit
  */
-type CommitDecision = 'pass' | 'block' | 'warn';
+type CommitDecision = 'pass' | 'needs_human_review' | 'fail';
 interface CommitGateResult {
     /**
      * 兼容字段：true 等价于 decision==='pass'，便于现有 commitReady 判定。
@@ -183,15 +216,57 @@ interface EvidenceBaseline {
     /** baseline 采集时已经失败的 check 名字。简化设计：不存 detail，避免漂移。 */
     failedCheckNames: string[];
 }
+interface EvidenceSnapshot {
+    capturedAt: string;
+    checks: EvidenceCheckResult[];
+    lintWarningsTotal: number;
+    todoCount: number;
+    gitDirtyFiles: number;
+}
+interface BaselineCheckDiff {
+    from: CheckStatus | 'missing';
+    to: CheckStatus | 'missing';
+    regression: boolean;
+}
+interface BaselineDiff {
+    checks: Record<string, BaselineCheckDiff>;
+    lintWarningsDelta: number;
+    todoDelta: number;
+}
 interface TaskReport {
     taskId: string;
     goal: string;
+    finalStage: WorkflowStage;
+    commitDecision: CommitDecision;
+    artifacts: TaskReportArtifacts;
+    metrics: TaskReportMetrics;
+    createdAt: string;
+    finishedAt: string;
     adapter: AdapterOutput;
     evidence: EvidenceResult;
     commitGate: CommitGateResult;
     commitReady: boolean;
     summary: string;
     generatedAt: string;
+}
+interface TaskReportArtifacts {
+    requirement: string;
+    contract: string;
+    design: string;
+    taskBreakdown: string;
+    implementationNotes: string;
+    review: string;
+    residentReview: string;
+    testReport: string;
+    baselineEvidence: string;
+    currentEvidence: string;
+    baselineDiff: string;
+    commitSummary: string;
+}
+interface TaskReportMetrics {
+    llmCalls: number;
+    durationSeconds: number;
+    retries: number;
 }
 interface TemplateDraft {
     name: string;
@@ -261,6 +336,8 @@ interface AgentManifest {
     stage: WorkflowStage;
     /** 是否启用；false 则 host install 时不渲染对应文件 */
     enabled: boolean;
+    /** 是否允许宿主原生 plan mode。默认 false，避免 sub-agent 在设计阶段绕过 repo-local 工件。 */
+    planModeEnabled: boolean;
     /** 各 host 上推荐的模型。缺省值由 host 渲染层兜底 */
     models: Partial<Record<HostName, string>>;
     /** 工具白名单，host 渲染时填入 sub-agent frontmatter */
@@ -272,22 +349,31 @@ declare const packageInfo: PackageInfo;
 declare const hostNameSchema: z.ZodEnum<["claude-code", "codex", "gemini-cli"]>;
 declare const projectTypeSchema: z.ZodEnum<["node", "go", "python", "unknown"]>;
 declare const requiredCheckSchema: z.ZodEnum<["build", "lint", "typecheck", "test"]>;
+declare const acceptanceVerifierSchema: z.ZodEnum<["build", "lint", "typecheck", "test", "playwright", "api", "manual"]>;
 declare const templateNameSchema: z.ZodEnum<["bug-fix", "feature-simple", "general-task"]>;
 declare const riskLevelSchema: z.ZodEnum<["low", "medium", "high"]>;
+declare const estimatedComplexitySchema: z.ZodEnum<["simple", "medium", "complex"]>;
 declare const adapterKindSchema: z.ZodEnum<["claude-code", "codex", "custom"]>;
-declare const hostSubagentConfigSchema: z.ZodType<HostSubagentConfig>;
-declare const taskStatusSchema: z.ZodEnum<["created", "contracting", "planning", "ready", "executing", "verifying", "passed", "failed"]>;
+declare const taskStatusSchema: z.ZodEnum<["active", "blocked", "completed", "aborted"]>;
 declare const workflowStageSchema: z.ZodEnum<["spec", "design", "execute", "review", "test", "commit_gate"]>;
 declare const stageMarkerSchema: z.ZodUnion<[z.ZodEnum<["spec", "design", "execute", "review", "test", "commit_gate"]>, z.ZodLiteral<"created">, z.ZodLiteral<"failed">, z.ZodLiteral<"retry">]>;
 declare const checkStatusSchema: z.ZodEnum<["passed", "failed", "skipped"]>;
+declare const taskOwnerRoleSchema: z.ZodEnum<["pm", "requirement", "designer", "developer", "reviewer", "tester"]>;
 declare const harnessConfigSchema: z.ZodType<HarnessConfig>;
+declare const acceptanceCriterionSchema: z.ZodType<AcceptanceCriterion>;
+declare const assetPromotionSchema: z.ZodType<AssetPromotion>;
 declare const contractSchema: z.ZodType<Contract>;
 declare const adapterOutputSchema: z.ZodType<AdapterOutput>;
 declare const evidenceCheckResultSchema: z.ZodType<EvidenceCheckResult>;
 declare const evidenceResultSchema: z.ZodType<EvidenceResult>;
-declare const commitDecisionSchema: z.ZodEnum<["pass", "block", "warn"]>;
+declare const skillSchema: z.ZodType<Skill>;
+declare const commitDecisionSchema: z.ZodEnum<["pass", "needs_human_review", "fail"]>;
 declare const commitGateResultSchema: z.ZodType<CommitGateResult>;
 declare const evidenceBaselineSchema: z.ZodType<EvidenceBaseline>;
+declare const evidenceSnapshotSchema: z.ZodType<EvidenceSnapshot>;
+declare const baselineDiffSchema: z.ZodType<BaselineDiff>;
+declare const taskReportArtifactsSchema: z.ZodType<TaskReportArtifacts>;
+declare const taskReportMetricsSchema: z.ZodType<TaskReportMetrics>;
 declare const taskReportSchema: z.ZodType<TaskReport>;
 declare const feedbackEntrySchema: z.ZodType<FeedbackEntry>;
 declare const agentRoleSchema: z.ZodEnum<["requirement", "designer", "developer", "reviewer", "tester"]>;
@@ -306,6 +392,8 @@ declare function parseContract(text: string): Contract;
 declare function validateTaskReport(report: TaskReport): TaskReport;
 declare function serializeTaskReport(report: TaskReport): string;
 declare function parseTaskReport(text: string): TaskReport;
+declare function validateRequirementMarkdown(markdown: string): string[];
+declare function validateDesignMarkdown(markdown: string): string[];
 /**
  * AgentManifest 的磁盘存放采用「YAML 元数据 + 并行 prompt.md」双文件方案：
  * - `<role>.yaml` 由 serializeAgentManifestYaml / parseAgentManifestYaml 处理
@@ -320,4 +408,4 @@ declare function validateTemplateDraft(template: TemplateDraft): TemplateDraft;
 declare function serializeTemplateDraft(template: TemplateDraft): string;
 declare function parseTemplateDraft(text: string): TemplateDraft;
 
-export { type AdapterInput, type AdapterKind, type AdapterOutput, type AgentManifest, type AgentRole, type CheckStatus, type CommitDecision, type CommitGateResult, type Contract, type ContractGateResult, type EvidenceBaseline, type EvidenceCheckResult, type EvidenceResult, type FeedbackEntry, type FlatYamlValue, HARNESSLY_VERSION, type HarnessConfig, type HostLifecycleCommands, type HostManifest, type HostName, type HostSubagentConfig, type PackageInfo, type ProjectType, type RequiredCheck, type RiskLevel, SHARED_PACKAGE_NAME, type StageMarker, type TaskContext, type TaskReport, type TaskState, type TaskStatus, type TaskSummary, type TemplateDraft, type TemplateName, type WorkflowStage, adapterKindSchema, adapterOutputSchema, agentManifestSchema, agentRoleSchema, checkStatusSchema, commitDecisionSchema, commitGateResultSchema, contractSchema, evidenceBaselineSchema, evidenceCheckResultSchema, evidenceResultSchema, feedbackEntrySchema, harnessConfigSchema, hostNameSchema, hostSubagentConfigSchema, packageInfo, parseAgentManifestYaml, parseBoolean, parseContract, parseFlatYaml, parseHarnessConfig, parseStringList, parseTaskReport, parseTemplateDraft, projectTypeSchema, requiredCheckSchema, riskLevelSchema, serializeAgentManifestYaml, serializeContract, serializeFlatYaml, serializeHarnessConfig, serializeTaskReport, serializeTemplateDraft, stageMarkerSchema, taskReportSchema, taskStatusSchema, templateDraftSchema, templateNameSchema, validateContract, validateHarnessConfig, validateTaskReport, validateTemplateDraft, workflowStageSchema };
+export { type AcceptanceCriterion, type AcceptanceVerifier, type AdapterInput, type AdapterKind, type AdapterOutput, type AgentManifest, type AgentRole, type AssetPromotion, type BaselineCheckDiff, type BaselineDiff, type CheckStatus, type CommitDecision, type CommitGateResult, type Contract, type ContractGateResult, type EstimatedComplexity, type EvidenceBaseline, type EvidenceCheckResult, type EvidenceResult, type EvidenceSnapshot, type FeedbackEntry, type FlatYamlValue, HARNESSLY_VERSION, type HarnessConfig, type HostLifecycleCommands, type HostManifest, type HostName, type PackageInfo, type ProjectType, type RequiredCheck, type RiskLevel, SHARED_PACKAGE_NAME, type Skill, type StageMarker, type TaskContext, type TaskOwnerRole, type TaskReport, type TaskReportArtifacts, type TaskReportMetrics, type TaskState, type TaskStatus, type TaskSummary, type TemplateDraft, type TemplateName, type WorkflowStage, acceptanceCriterionSchema, acceptanceVerifierSchema, adapterKindSchema, adapterOutputSchema, agentManifestSchema, agentRoleSchema, assetPromotionSchema, baselineDiffSchema, checkStatusSchema, commitDecisionSchema, commitGateResultSchema, contractSchema, estimatedComplexitySchema, evidenceBaselineSchema, evidenceCheckResultSchema, evidenceResultSchema, evidenceSnapshotSchema, feedbackEntrySchema, harnessConfigSchema, hostNameSchema, packageInfo, parseAgentManifestYaml, parseBoolean, parseContract, parseFlatYaml, parseHarnessConfig, parseStringList, parseTaskReport, parseTemplateDraft, projectTypeSchema, requiredCheckSchema, riskLevelSchema, serializeAgentManifestYaml, serializeContract, serializeFlatYaml, serializeHarnessConfig, serializeTaskReport, serializeTemplateDraft, skillSchema, stageMarkerSchema, taskOwnerRoleSchema, taskReportArtifactsSchema, taskReportMetricsSchema, taskReportSchema, taskStatusSchema, templateDraftSchema, templateNameSchema, validateContract, validateDesignMarkdown, validateHarnessConfig, validateRequirementMarkdown, validateTaskReport, validateTemplateDraft, workflowStageSchema };

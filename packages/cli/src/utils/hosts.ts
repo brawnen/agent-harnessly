@@ -109,13 +109,9 @@ export function renderRepoLocalShell(
 ): Record<string, string> {
   switch (manifest.host) {
     case 'claude-code':
-      return renderClaudeCodeManagedFiles(manifest, {
-        subagents: config.hostSubagents,
-        agentManifests,
-      });
+      return renderClaudeCodeManagedFiles(manifest, { agentManifests });
     case 'codex':
       return renderCodexManagedFiles(manifest, {
-        subagents: config.hostSubagents,
         userPromptSubmitHookEnabled: config.codexUserPromptSubmitHookEnabled,
         agentManifests,
       });

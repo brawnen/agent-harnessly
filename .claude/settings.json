@@ -2,20 +2,35 @@
   "hooks": {
     "SessionStart": [
       {
-        "type": "command",
-        "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/session_start.js\""
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/session_start.js\""
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
       {
-        "type": "command",
-        "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/user_prompt_submit.js\""
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/user_prompt_submit.js\""
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "type": "command",
-        "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/stop.js\""
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/stop.js\""
+          }
+        ]
       }
     ]
   }

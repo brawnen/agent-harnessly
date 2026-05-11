@@ -43,23 +43,6 @@ export function createDefaultHarnessConfig(
     sourceOfTruthDir: '.harness/hosts',
     fallbackCreateTaskWithoutPlanner: false,
     codexUserPromptSubmitHookEnabled: true,
-    hostSubagents: {
-      planner: {
-        useHostPlanMode: true,
-        models: {
-          'claude-code': 'haiku',
-          codex: 'gpt-5.4-mini',
-          'gemini-cli': 'gemini-flash',
-        },
-      },
-      evaluator: {
-        models: {
-          'claude-code': 'sonnet',
-          codex: 'gpt-5.4',
-          'gemini-cli': 'gemini-pro',
-        },
-      },
-    },
     adapterKind: getDefaultAdapterKind(defaultHost),
     adapterCommand: getDefaultAdapterCommand(defaultHost),
   };

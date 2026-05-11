@@ -11,13 +11,20 @@ import { runList } from './list';
 import { runStatus } from './status';
 
 const TEST_CONTRACT: Contract = {
+  version: '2.0',
+  taskId: 'task-1',
   goal: '修复状态展示',
   templateName: 'bug-fix',
   riskLevel: 'medium',
+  estimatedComplexity: 'medium',
+  requiredChecks: [],
   scopeInclude: ['packages/cli/src'],
   scopeExclude: ['dist/**'],
-  acceptanceCriteria: ['输出 task 状态'],
+  acceptanceCriteria: [{ criterion: '输出 task 状态', verifiableBy: 'manual' }],
   outOfScope: ['重构执行引擎'],
+  linkedSpec: 'requirement.md',
+  linkedDesign: 'design.md',
+  createdAt: '2026-04-20T00:00:00.000Z',
 };
 
 async function createTempDir(): Promise<string> {

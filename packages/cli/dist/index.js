@@ -184,6 +184,33 @@ async function runEvidenceBaseline(flags) {
   ]);
 }
 
+// src/commands/feedback.ts
+import { loadFeedbackPool, promoteFeedbackEntry } from "@harnessly/core";
+async function runFeedback(args) {
+  const workDir = process.cwd();
+  const subcommand = args[0] ?? "list";
+  if (subcommand === "list") {
+    const entries = await loadFeedbackPool(workDir);
+    printLines(
+      entries.map(
+        (entry) => `${entry.taskId}	${entry.decision}	retry=${entry.retryCount}	${entry.goal}`
+      )
+    );
+    return;
+  }
+  if (subcommand === "promote") {
+    const taskId = args[1];
+    if (!taskId) {
+      throw new Error("\u7F3A\u5C11 task-id\u3002\u7528\u6CD5\uFF1Aharnessly feedback promote <task-id> [reason]");
+    }
+    const reason = args.slice(2).join(" ").trim() || "manual promotion";
+    const entry = await promoteFeedbackEntry(workDir, taskId, reason);
+    printLines([`feedback promoted: ${entry.taskId}`]);
+    return;
+  }
+  throw new Error(`\u672A\u77E5 feedback \u5B50\u547D\u4EE4\uFF1A${subcommand}`);
+}
+
 // src/commands/init.ts
 import { writeFile as writeFile2 } from "fs/promises";
 import {
@@ -191,6 +218,9 @@ import {
   detectProjectType,
   ensureHarnessDirectories,
   renderGlobalRulesTemplate,
+  renderReviewAgentsTemplate,
+  renderStructureRulesTemplate,
+  writeDefaultSkillManifests,
   writeDefaultAgentManifests,
   writeFileIfChanged,
   writeHarnessConfig
@@ -275,13 +305,9 @@ async function loadEnabledHosts(workDir, requestedHost) {
 function renderRepoLocalShell(manifest, config, agentManifests = []) {
   switch (manifest.host) {
     case "claude-code":
-      return renderClaudeCodeManagedFiles(manifest, {
-        subagents: config.hostSubagents,
-        agentManifests
-      });
+      return renderClaudeCodeManagedFiles(manifest, { agentManifests });
     case "codex":
       return renderCodexManagedFiles(manifest, {
-        subagents: config.hostSubagents,
         userPromptSubmitHookEnabled: config.codexUserPromptSubmitHookEnabled,
         agentManifests
       });
@@ -366,6 +392,23 @@ async function runInit(flags) {
     renderGlobalRulesTemplate(),
     force
   );
+  const structureRulesStatus = await writeFileIfChanged(
+    paths.structureRulesFile,
+    renderStructureRulesTemplate(),
+    force
+  );
+  const reviewAgentsStatus = await writeFileIfChanged(
+    paths.reviewAgentsFile,
+    renderReviewAgentsTemplate(),
+    force
+  );
+  const skillResults = await writeDefaultSkillManifests(
+    workDir,
+    projectType,
+    config.requiredChecks,
+    force
+  );
+  const skillSummary = skillResults.length > 0 ? skillResults.map((r) => `${r.check}/${r.language}=${r.status}`).join(", ") : "none";
   const agentResults = await writeDefaultAgentManifests(workDir, force);
   const agentSummary = agentResults.map((r) => `${r.role}=${r.manifestStatus}/${r.promptStatus}`).join(", ");
   for (const host of hosts) {
@@ -378,6 +421,9 @@ async function runInit(flags) {
     `- project_type: ${projectType}`,
     `- config: ${configStatus}`,
     `- global_rules: ${globalRulesStatus}`,
+    `- structure_rules: ${structureRulesStatus}`,
+    `- review_agents: ${reviewAgentsStatus}`,
+    `- skills: ${skillSummary}`,
     `- agents: ${agentSummary}`,
     `- hosts: ${hosts.join(", ")}`,
     `- default_host: ${config.defaultHost}`,
@@ -452,7 +498,7 @@ async function resolveCompletionRecommendedAgent(workDir, activeTaskId) {
   }
   const targetStage = failureStage ?? stage;
   const agent = pickRecommendedAgent("completion_review", targetStage, enabledRoles);
-  return { agent: agent ?? "harness-evaluator", stage, failureStage };
+  return { agent, stage, failureStage };
 }
 async function runHostCompletionGate(flags, positionals) {
   const workDir = process.cwd();
@@ -489,7 +535,6 @@ async function runHostCompletionGate(flags, positionals) {
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: "harness-evaluator",
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? "must_fix_scope_then_eval" : "fix_scope_violation_then_rerun"
@@ -503,7 +548,6 @@ async function runHostCompletionGate(flags, positionals) {
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: "harness-evaluator",
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? "must_fix_scope_then_eval" : "fix_scope_violation_then_rerun"
@@ -524,7 +568,6 @@ async function runHostCompletionGate(flags, positionals) {
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: "harness-evaluator",
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? "must_run_eval" : "delegate_to_evaluator_or_run_eval"
@@ -538,7 +581,6 @@ async function runHostCompletionGate(flags, positionals) {
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: "harness-evaluator",
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? "must_run_eval" : "delegate_to_evaluator_or_run_eval"
@@ -557,7 +599,6 @@ async function runHostCompletionGate(flags, positionals) {
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: "harness-evaluator",
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? "must_fix_and_rerun_eval" : "fix_findings_then_rerun_eval"
@@ -571,7 +612,6 @@ async function runHostCompletionGate(flags, positionals) {
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: "harness-evaluator",
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? "must_fix_and_rerun_eval" : "fix_findings_then_rerun_eval"
@@ -588,14 +628,18 @@ async function runHostCompletionGate(flags, positionals) {
 }
 
 // src/commands/host/agent-event.ts
+import { AGENT_ROLES } from "@harnessly/core";
 function readStringFlag2(flags, name) {
   return typeof flags[name] === "string" ? flags[name].trim() : "";
 }
 function normalizeAgent(value) {
-  if (value === "harness-planner" || value === "harness-evaluator") {
-    return value;
+  const stripped = value.startsWith("harness-") ? value.slice("harness-".length) : value;
+  if (AGENT_ROLES.includes(stripped)) {
+    return stripped;
   }
-  throw new Error("\u7F3A\u5C11\u6216\u975E\u6CD5 agent\u3002\u5141\u8BB8\u503C\uFF1Aharness-planner, harness-evaluator");
+  throw new Error(
+    `\u7F3A\u5C11\u6216\u975E\u6CD5 agent\u3002\u5141\u8BB8\u503C\uFF1A${AGENT_ROLES.join(", ")}\uFF08\u4EA6\u63A5\u53D7 harness-<role> \u524D\u7F00\uFF09`
+  );
 }
 function normalizeEvent(value) {
   if (value === "started" || value === "completed") {
@@ -612,14 +656,16 @@ async function runHostAgentEvent(flags, positionals) {
   const model = readStringFlag2(flags, "model") || null;
   await appendHarnessEvent(workDir, {
     type: `subagent.${event}`,
-    agent,
+    role: agent,
+    agent: `harness-${agent}`,
     taskId,
     model
   });
   printJson({
     recorded: true,
     type: `subagent.${event}`,
-    agent,
+    role: agent,
+    agent: `harness-${agent}`,
     taskId,
     model
   });
@@ -642,7 +688,7 @@ function pickRecommendation(hasActiveTask, status) {
   if (!hasActiveTask) {
     return "idle";
   }
-  if (status === "failed") {
+  if (status === "blocked" || status === "aborted") {
     return "retry";
   }
   return "resume";
@@ -886,7 +932,6 @@ async function runHostUserPromptSubmit(flags, positionals) {
     risk: decision.risk,
     activeTaskId,
     activeStage,
-    plannerAgent: action === "delegate_to_planner" ? "harness-planner" : void 0,
     recommendedAgent,
     taskCreated: false
   });
@@ -938,7 +983,6 @@ async function runHostUserPromptSubmit(flags, positionals) {
     taskKind: decision.taskKind,
     risk: decision.risk,
     taskCreated: false,
-    plannerAgent: action === "delegate_to_planner" ? "harness-planner" : void 0,
     recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,
     autoFallback: pending !== null,
@@ -967,8 +1011,9 @@ async function runEval(flags, positionals) {
   }
   const ctx = await manager.resume(taskId, workDir);
   const previousReport = await manager.loadReport(taskId, workDir);
-  ctx.state.status = "verifying";
+  ctx.state.status = "active";
   ctx.state.currentStage = "test";
+  ctx.state.currentOwner = "tester";
   await manager.saveState(ctx);
   const evidence = await collectEvidence2(workDir, ctx.config, ctx.contract);
   const adapter = previousReport?.adapter ?? createEvalOnlyAdapter();
@@ -1372,6 +1417,8 @@ function printUsage() {
       "  harnessly archive requirement|design|both <task-id> [--topic <name>] [--force]",
       "  harnessly archive requirement|design|both --latest [--topic <name>] [--force]",
       "  harnessly evidence baseline [--show] [--clear] [--json]",
+      "  harnessly feedback list",
+      "  harnessly feedback promote <task-id> [reason]",
       "  harnessly host install [--host auto|all|claude-code|codex|gemini-cli]",
       "  harnessly host status [--json]",
       "  harnessly host sync [--host auto|all|claude-code|codex|gemini-cli]",
@@ -1423,6 +1470,10 @@ async function runCli(argv) {
   }
   if (command === "evidence" && subcommand === "baseline") {
     await runEvidenceBaseline(parsed.flags);
+    return;
+  }
+  if (command === "feedback") {
+    await runFeedback([subcommand, ...rest].filter(Boolean));
     return;
   }
   if (command === "host") {

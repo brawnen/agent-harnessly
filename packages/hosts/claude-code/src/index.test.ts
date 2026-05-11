@@ -4,10 +4,8 @@ import type { AgentManifest } from '@harnessly/shared';
 import { createHostManifest } from '@harnessly/host-shared';
 
 import {
-  renderClaudeCodeEvaluatorAgent,
   renderClaudeCodeHookIo,
   renderClaudeCodeManagedFiles,
-  renderClaudeCodePlannerAgent,
   renderClaudeCodeSessionStartHook,
   renderClaudeCodeSettings,
   renderClaudeCodeStopHook,
@@ -21,6 +19,7 @@ function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManif
     description: `${role} agent`,
     stage: 'review',
     enabled: true,
+    planModeEnabled: false,
     models: { 'claude-code': 'sonnet' },
     toolWhitelist: ['Read', 'Bash'],
     prompt: `# ${role}\n你是 ${role}。`,
@@ -28,7 +27,7 @@ function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManif
   };
 }
 
-describe('renderClaudeCodeSettings', () => {
+describe('renderClaudeCodeManagedFiles', () => {
   it('should render hooks pointing to Node.js bridge scripts', () => {
     const settings = renderClaudeCodeSettings(createHostManifest('claude-code', 'harnessly-local'));
 
@@ -40,43 +39,19 @@ describe('renderClaudeCodeSettings', () => {
     expect(settings).toContain('.harness/hosts/claude-code/hooks/stop.js');
   });
 
-  it('should render planner and evaluator sub-agent definitions', () => {
-    const files = renderClaudeCodeManagedFiles(createHostManifest('claude-code', 'harnessly-local'));
+  it('should NOT render legacy harness-planner / harness-evaluator files (v3-core only)', () => {
+    const files = renderClaudeCodeManagedFiles(
+      createHostManifest('claude-code', 'harnessly-local'),
+      {
+        agentManifests: [makeManifest('requirement', { stage: 'spec' })],
+      },
+    );
 
-    expect(renderClaudeCodePlannerAgent()).toContain('name: harness-planner');
-    expect(renderClaudeCodeEvaluatorAgent()).toContain('name: harness-evaluator');
-    expect(files['.claude/agents/harness-planner.md']).toContain('Harness Planner');
-    expect(files['.claude/agents/harness-evaluator.md']).toContain('Harness Evaluator');
-    expect(files['.claude/agents/harness-planner.md']).toContain(
-      'harnessly host agent-event --agent harness-planner --event started',
-    );
-    expect(files['.claude/agents/harness-evaluator.md']).toContain(
-      'harnessly host agent-event --agent harness-evaluator --event started',
-    );
+    expect(files['.claude/agents/harness-planner.md']).toBeUndefined();
+    expect(files['.claude/agents/harness-evaluator.md']).toBeUndefined();
   });
 
-  it('should render configured models and plan mode instructions', () => {
-    const files = renderClaudeCodeManagedFiles(createHostManifest('claude-code', 'harnessly-local'), {
-      planner: {
-        useHostPlanMode: false,
-        models: {
-          'claude-code': 'sonnet',
-        },
-      },
-      evaluator: {
-        models: {
-          'claude-code': 'opus',
-        },
-      },
-    });
-
-    expect(files['.claude/agents/harness-planner.md']).toContain('model: sonnet');
-    expect(files['.claude/agents/harness-planner.md']).toContain('默认走结构化产出路径');
-    expect(files['.claude/agents/harness-planner.md']).toContain('不进入 plan mode');
-    expect(files['.claude/agents/harness-evaluator.md']).toContain('model: opus');
-  });
-
-  it('should incrementally render 5-role sub-agents when agentManifests are provided', () => {
+  it('should render only enabled v3-core 5-role sub-agents', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
       {
@@ -90,11 +65,6 @@ describe('renderClaudeCodeSettings', () => {
       },
     );
 
-    // 老的复合别名仍然存在（向后兼容）
-    expect(files['.claude/agents/harness-planner.md']).toBeDefined();
-    expect(files['.claude/agents/harness-evaluator.md']).toBeDefined();
-
-    // 5 角色文件中 enabled=true 的 4 个被渲染
     expect(files['.claude/agents/harness-requirement.md']).toContain('name: harness-requirement');
     expect(files['.claude/agents/harness-designer.md']).toContain('name: harness-designer');
     expect(files['.claude/agents/harness-reviewer.md']).toContain('name: harness-reviewer');
@@ -104,17 +74,27 @@ describe('renderClaudeCodeSettings', () => {
     expect(files['.claude/agents/harness-developer.md']).toBeUndefined();
   });
 
-  it('should preserve old 2-role behavior when agentManifests are absent', () => {
+  it('renders the configured model from manifest into frontmatter', () => {
+    const files = renderClaudeCodeManagedFiles(
+      createHostManifest('claude-code', 'harnessly-local'),
+      {
+        agentManifests: [
+          makeManifest('reviewer', { models: { 'claude-code': 'opus' } }),
+        ],
+      },
+    );
+
+    expect(files['.claude/agents/harness-reviewer.md']).toContain('model: opus');
+  });
+
+  it('produces no agent files when agentManifests is omitted', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
     );
 
-    // 没传 agentManifests，5 角色文件全部缺失
-    expect(files['.claude/agents/harness-requirement.md']).toBeUndefined();
-    expect(files['.claude/agents/harness-reviewer.md']).toBeUndefined();
-    // 老的还在
-    expect(files['.claude/agents/harness-planner.md']).toBeDefined();
-    expect(files['.claude/agents/harness-evaluator.md']).toBeDefined();
+    // 没传 manifest 也没有任何复合别名兜底（v3-core 不再生成）
+    const agentFiles = Object.keys(files).filter((p) => p.startsWith('.claude/agents/'));
+    expect(agentFiles).toEqual([]);
   });
 });
 
@@ -130,6 +110,15 @@ describe('Claude Code hook bridge scripts', () => {
     expect(io).toContain('harnessly-local host user-prompt-submit');
     expect(io).toContain('harnessly-local host completion-gate');
     expect(io).toContain('module.exports');
+  });
+
+  it('hook hint scripts no longer fall back to harness-planner / harness-evaluator literals', () => {
+    const io = renderClaudeCodeHookIo(createHostManifest('claude-code', 'harnessly-local'));
+
+    expect(io).not.toContain("'harness-planner'");
+    expect(io).not.toContain("'harness-evaluator'");
+    // result.evaluatorAgent 是 v2 字段，已不再读取
+    expect(io).not.toContain('result.evaluatorAgent');
   });
 
   it('should render SessionStart hook bridge that reads stdin and calls CLI', () => {

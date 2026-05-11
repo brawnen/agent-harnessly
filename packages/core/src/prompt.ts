@@ -59,7 +59,7 @@ function renderContract(ctx: TaskContext): string {
     `- template: ${ctx.contract.templateName}`,
     `- risk: ${ctx.contract.riskLevel}`,
     `- scope_include: ${ctx.contract.scopeInclude.join('、') || '(空)'}`,
-    `- acceptance: ${ctx.contract.acceptanceCriteria.join('；') || '(空)'}`,
+    `- acceptance: ${ctx.contract.acceptanceCriteria.map((item) => item.criterion).join('；') || '(空)'}`,
   ].join('\n');
 }
 

@@ -1,4 +1,4 @@
-import { AgentRole, AgentManifest, StageMarker, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, TaskContext, TaskReport, CommitGateResult, RequiredCheck, TemplateDraft, EvidenceCheckResult, TaskSummary, RiskLevel } from '@harnessly/shared';
+import { AgentRole, AgentManifest, StageMarker, AssetPromotion, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, TaskContext, TaskReport, CommitGateResult, RequiredCheck, TemplateDraft, Skill, TaskSummary, RiskLevel } from '@harnessly/shared';
 import { z } from 'zod';
 
 /**
@@ -53,17 +53,6 @@ type AgentRoutingIntent = 'new_task' | 'resume_task' | 'completion_review';
  * 用于诊断与文档；调用方需自行判断 enabledRoles。
  */
 declare function getRoleForStage(stage: StageMarker): AgentRole | null;
-/**
- * 按路由意图 + 当前 stage + 启用角色集合，挑出推荐的 sub-agent 名字。
- *
- * 规则：
- * - new_task         : 启用了 requirement 用 'harness-requirement'，否则用复合别名 'harness-planner'
- * - resume_task      : stage 对应角色已启用就用 'harness-<role>'；execute 阶段返回 null（主 agent）；其他情况返回 null
- * - completion_review: stage 对应角色已启用就用 'harness-<role>'；否则用复合别名 'harness-evaluator'
- *
- * 'harness-planner' / 'harness-evaluator' 是 v2 复合别名，host install 始终生成；
- * 'harness-<role>' 仅在用户启用了对应 manifest 时存在。
- */
 declare function pickRecommendedAgent(intent: AgentRoutingIntent, stage: StageMarker | null, enabledRoles: ReadonlySet<AgentRole>): string | null;
 /**
  * 从 manifests 列表收集 enabled=true 的角色集合，便于 pickRecommendedAgent 消费。
@@ -86,6 +75,8 @@ type ArchiveKind = 'requirement' | 'design' | 'both';
 interface ArchiveOptions {
     /** 归档分类（决定 docs/architecture 下的子目录名）。默认 'tasks' */
     topic?: string;
+    /** 资产晋升模式：new_topic 不覆盖，append 保留现有文件，replace 需配合 force 覆盖 */
+    mode?: AssetPromotion['mode'];
     /** force=true 时覆盖目标位置已有文件 */
     force?: boolean;
 }
@@ -103,11 +94,10 @@ interface ArchiveResult {
 interface ArchiveTargetPaths {
     archDir: string;
     topicDir: string;
-    taskDir: string;
 }
-declare function getArchiveTargetPaths(workDir: string, taskId: string, topic?: string): ArchiveTargetPaths;
+declare function getArchiveTargetPaths(workDir: string, _taskId: string, topic?: string): ArchiveTargetPaths;
 /**
- * 把指定 task 的工件晋升到 docs/architecture/<topic>/<taskId>/。
+ * 把指定 task 的工件晋升到 docs/architecture/<topic>/。
  *
  * 流程：
  * 1. 通过 TaskManager.load 校验 task 存在并加载 contract / plan
@@ -118,6 +108,8 @@ declare function getArchiveTargetPaths(workDir: string, taskId: string, topic?: 
  * 不修改 .harness/，只读源 + 写新目标。
  */
 declare function archiveTaskArtifacts(workDir: string, taskId: string, kind: ArchiveKind, options?: ArchiveOptions): Promise<ArchiveResult>;
+
+declare function runArtifactGuard(taskDir: string): Promise<EvidenceCheckResult>;
 
 declare function createDefaultHarnessConfig(projectType: ProjectType, hosts?: HostName[]): HarnessConfig;
 declare function serializeHarnessConfig(config: HarnessConfig): string;
@@ -158,11 +150,12 @@ declare class AnthropicClient implements LLMClient {
 declare function createLLMClientFromEnv(env?: NodeJS.ProcessEnv): LLMClient | null;
 
 interface ContractGenerationOptions {
+    taskId?: string;
     goal: string;
     templateName: TemplateName;
     llmClient?: LLMClient | null;
 }
-declare function generateFallbackContract(goal: string, templateName: TemplateName): Contract;
+declare function generateFallbackContract(goal: string, templateName: TemplateName, taskId?: string): Contract;
 declare function generateContract(options: ContractGenerationOptions): Promise<Contract>;
 declare function checkContract(contract: Contract): ContractGateResult;
 
@@ -181,11 +174,17 @@ declare function collectEvidence(workDir: string, config: HarnessConfig, contrac
  */
 declare const EVIDENCE_BASELINE_FILENAME = "evidence-baseline.json";
 declare function getEvidenceBaselinePath(workDir: string): string;
+declare function getTaskEvidenceDir(taskDir: string): string;
+declare function getTaskEvidencePath(taskDir: string, kind: 'baseline' | 'current' | 'baseline-diff'): string;
 /**
  * 从一次 evidence 采集结果派生 baseline。
  * 只取 check.status === 'failed' 的 name，按字母排序保证落盘稳定。
  */
 declare function buildEvidenceBaseline(evidence: EvidenceResult): EvidenceBaseline;
+declare function buildEvidenceSnapshot(evidence: EvidenceResult): EvidenceSnapshot;
+declare function buildBaselineDiff(baseline: EvidenceSnapshot, current: EvidenceSnapshot): BaselineDiff;
+declare function saveEvidenceSnapshot(taskDir: string, kind: 'baseline' | 'current', snapshot: EvidenceSnapshot): Promise<void>;
+declare function saveBaselineDiff(taskDir: string, diff: BaselineDiff): Promise<void>;
 /**
  * 加载磁盘上的 baseline。文件不存在或损坏时返回 null（让 gate 退化为不带 baseline 的旧行为）。
  */
@@ -219,6 +218,7 @@ declare function createAdapter(kind: AdapterKind): Adapter;
  */
 declare const FEEDBACK_POOL_FILENAME = "feedback-pool.jsonl";
 declare function getFeedbackPoolPath(workDir: string): string;
+declare function getFeedbackHistoryPath(workDir: string): string;
 /**
  * 把 task ctx + report 转成一条 FeedbackEntry。
  * 输入是只读的；输出可直接交给 appendFeedbackEntry。
@@ -260,6 +260,7 @@ declare function pickRecentEntries(entries: readonly FeedbackEntry[], options?: 
  * 每条形如：`[<taskId>] (<template>, <decision>, retry=<n>) <goal>`
  */
 declare function renderFeedbackEntriesAsLines(entries: readonly FeedbackEntry[]): string[];
+declare function promoteFeedbackEntry(workDir: string, taskId: string, reason?: string): Promise<FeedbackEntry>;
 
 interface EvaluateCommitGateOptions {
     /**
@@ -273,8 +274,8 @@ interface EvaluateCommitGateOptions {
  * 评估 commit_gate 决策。
  *
  * 三态规则（v3-core SPEC §6.6）：
- * - 任何硬性失败 → 'block'（禁止 commit）
- * - 无硬性失败但存在软性告警 → 'warn'（允许 commit 但需 PM 确认）
+ * - 任何硬性失败 → 'fail'（禁止 commit）
+ * - 无硬性失败但存在软性告警 → 'needs_human_review'
  * - 全部通过 → 'pass'
  *
  * 当前硬性维度：
@@ -312,6 +313,8 @@ declare function assemblePrompt(ctx: TaskContext): string;
 
 declare function createTaskReport(ctx: TaskContext, adapter: AdapterOutput, evidence: EvidenceResult, commitGate: CommitGateResult): TaskReport;
 
+declare function renderResidentReview(workDir: string, findings: readonly EvidenceCheckResult[]): Promise<string>;
+
 declare function runReviewStage(changedFiles: string[]): EvidenceCheckResult[];
 
 declare const HARNESS_DIRNAME = ".harness";
@@ -322,18 +325,40 @@ interface HarnessPaths {
     hostsDir: string;
     tasksDir: string;
     templatesDir: string;
+    skillsDir: string;
     configFile: string;
+    structureRulesFile: string;
+    reviewAgentsFile: string;
     globalRulesFile: string;
     activeTaskFile: string;
 }
 declare function getHarnessPaths(workDir: string): HarnessPaths;
+declare function renderStructureRulesTemplate(): string;
+declare function renderReviewAgentsTemplate(): string;
 declare function ensureHarnessDirectories(workDir: string): Promise<HarnessPaths>;
 declare function renderGlobalRulesTemplate(): string;
 declare function writeFileIfChanged(filePath: string, content: string, force?: boolean): Promise<'created' | 'updated' | 'skipped'>;
 declare function loadHarnessConfig(workDir: string): Promise<HarnessConfig>;
 declare function writeHarnessConfig(workDir: string, config: HarnessConfig, force?: boolean): Promise<'created' | 'updated' | 'skipped'>;
 
+declare function getSkillPath(workDir: string, checkName: RequiredCheck, language: ProjectType): string;
+declare function loadSkill(workDir: string, checkName: RequiredCheck, language: ProjectType): Promise<Skill | null>;
+declare function renderSkillTemplate(checkName: RequiredCheck, language: ProjectType, command: string): string;
+interface SkillWriteResult {
+    check: RequiredCheck;
+    language: ProjectType;
+    status: 'created' | 'updated' | 'skipped';
+}
+declare function writeDefaultSkillManifests(workDir: string, language: ProjectType, requiredChecks: readonly RequiredCheck[], force?: boolean): Promise<SkillWriteResult[]>;
+declare function runSkillCheck(workDir: string, checkName: RequiredCheck, language: ProjectType): Promise<EvidenceCheckResult>;
+
+interface ScopeViolation {
+    file: string;
+    pattern: string;
+}
 declare function runScopeCheck(contract: Contract | undefined, changedFiles: string[]): EvidenceCheckResult;
+
+declare function runStructureCheck(workDir: string, changedFiles: string[]): Promise<EvidenceCheckResult[]>;
 
 declare class TaskManager {
     private loadConfig;
@@ -343,6 +368,13 @@ declare class TaskManager {
     private getStateFile;
     private getMetaFile;
     private getContractFile;
+    private getRequirementFile;
+    private getDesignFile;
+    private getTaskBreakdownFile;
+    private getImplementationNotesFile;
+    private getReviewFile;
+    private getResidentReviewFile;
+    private getTestReportFile;
     private getPlanFile;
     private getPromptFile;
     private getReportFile;
@@ -352,7 +384,14 @@ declare class TaskManager {
     create(goal: string, workDir: string): Promise<TaskContext>;
     saveState(ctx: TaskContext): Promise<void>;
     saveContract(ctx: TaskContext, contract: Contract): Promise<void>;
+    saveRequirement(ctx: TaskContext, requirement: string): Promise<void>;
     savePlan(ctx: TaskContext, plan: string): Promise<void>;
+    saveDesign(ctx: TaskContext, design: string): Promise<void>;
+    saveTaskBreakdown(ctx: TaskContext, taskBreakdown: string): Promise<void>;
+    saveImplementationNotes(ctx: TaskContext, notes: string): Promise<void>;
+    saveReviewMarkdown(ctx: TaskContext, review: string): Promise<void>;
+    saveResidentReview(ctx: TaskContext, review: string): Promise<void>;
+    saveTestReport(ctx: TaskContext, report: string): Promise<void>;
     savePrompt(ctx: TaskContext, prompt: string): Promise<string>;
     saveReport(ctx: TaskContext, report: TaskReport): Promise<void>;
     saveFeedback(ctx: TaskContext, feedback: string): Promise<void>;
@@ -417,6 +456,7 @@ interface WorkflowRunOptions {
 declare class WorkflowEngine {
     private readonly manager;
     constructor(manager: TaskManager);
+    private baselineSnapshot;
     run(ctx: TaskContext, options: WorkflowRunOptions): Promise<{
         report?: TaskReport;
         dryRun: boolean;
@@ -470,4 +510,4 @@ interface CorePackageInfo {
 }
 declare function getCorePackageInfo(): CorePackageInfo;
 
-export { AGENT_ROLES, type Adapter, type AgentDiskFiles, type AgentRoutingIntent, type AgentWriteResult, AnthropicClient, type AnthropicClientOptions, type ArchiveKind, type ArchiveOptions, type ArchiveResult, type ArchiveTargetPaths, type ArchivedFile, type BuiltinTemplateDefinition, CORE_PACKAGE_NAME, ClaudeCodeAdapter, CodexAdapter, type ContractGenerationOptions, type CorePackageInfo, CustomAdapter, EVIDENCE_BASELINE_FILENAME, type EvaluateCommitGateOptions, FEEDBACK_POOL_FILENAME, HARNESS_DIRNAME, type HarnessPaths, type LLMClient, type PickRecentEntriesOptions, type StructuredGenerationOptions, TaskManager, TemplateRegistry, type TextGenerationOptions, WorkflowEngine, type WorkflowRunOptions, appendFeedbackEntry, archiveTaskArtifacts, assemblePrompt, buildEvidenceBaseline, buildFeedbackEntry, checkContract, collectChangedFiles, collectEnabledRoles, collectEvidence, createAdapter, createDefaultHarnessConfig, createLLMClientFromEnv, createTaskReport, createTemplateDraft, createTemplateRegistry, deriveTemplateName, detectProjectType, ensureHarnessDirectories, evaluateCommitGate, generateContract, generateFallbackContract, generatePlan, getAgentDiskFiles, getArchiveTargetPaths, getBuiltinTemplates, getCorePackageInfo, getDefaultAgentManifest, getDefaultRequiredChecks, getEvidenceBaselinePath, getFeedbackPoolPath, getHarnessPaths, getRoleForStage, listAgentFiles, loadAgentManifest, loadAgentManifests, loadEvidenceBaseline, loadFeedbackPool, loadHarnessConfig, matchTemplate, parseHarnessConfig, pickRecentEntries, pickRecommendedAgent, renderFeedbackEntriesAsLines, renderGlobalRulesTemplate, runLevel2Validation, runReviewStage, runScopeCheck, saveEvidenceBaseline, saveTemplateDraft, serializeHarnessConfig, writeDefaultAgentManifests, writeFileIfChanged, writeHarnessConfig };
+export { AGENT_ROLES, type Adapter, type AgentDiskFiles, type AgentRoutingIntent, type AgentWriteResult, AnthropicClient, type AnthropicClientOptions, type ArchiveKind, type ArchiveOptions, type ArchiveResult, type ArchiveTargetPaths, type ArchivedFile, type BuiltinTemplateDefinition, CORE_PACKAGE_NAME, ClaudeCodeAdapter, CodexAdapter, type ContractGenerationOptions, type CorePackageInfo, CustomAdapter, EVIDENCE_BASELINE_FILENAME, type EvaluateCommitGateOptions, FEEDBACK_POOL_FILENAME, HARNESS_DIRNAME, type HarnessPaths, type LLMClient, type PickRecentEntriesOptions, type ScopeViolation, type SkillWriteResult, type StructuredGenerationOptions, TaskManager, TemplateRegistry, type TextGenerationOptions, WorkflowEngine, type WorkflowRunOptions, appendFeedbackEntry, archiveTaskArtifacts, assemblePrompt, buildBaselineDiff, buildEvidenceBaseline, buildEvidenceSnapshot, buildFeedbackEntry, checkContract, collectChangedFiles, collectEnabledRoles, collectEvidence, createAdapter, createDefaultHarnessConfig, createLLMClientFromEnv, createTaskReport, createTemplateDraft, createTemplateRegistry, deriveTemplateName, detectProjectType, ensureHarnessDirectories, evaluateCommitGate, generateContract, generateFallbackContract, generatePlan, getAgentDiskFiles, getArchiveTargetPaths, getBuiltinTemplates, getCorePackageInfo, getDefaultAgentManifest, getDefaultRequiredChecks, getEvidenceBaselinePath, getFeedbackHistoryPath, getFeedbackPoolPath, getHarnessPaths, getRoleForStage, getSkillPath, getTaskEvidenceDir, getTaskEvidencePath, listAgentFiles, loadAgentManifest, loadAgentManifests, loadEvidenceBaseline, loadFeedbackPool, loadHarnessConfig, loadSkill, matchTemplate, parseHarnessConfig, pickRecentEntries, pickRecommendedAgent, promoteFeedbackEntry, renderFeedbackEntriesAsLines, renderGlobalRulesTemplate, renderResidentReview, renderReviewAgentsTemplate, renderSkillTemplate, renderStructureRulesTemplate, runArtifactGuard, runLevel2Validation, runReviewStage, runScopeCheck, runSkillCheck, runStructureCheck, saveBaselineDiff, saveEvidenceBaseline, saveEvidenceSnapshot, saveTemplateDraft, serializeHarnessConfig, writeDefaultAgentManifests, writeDefaultSkillManifests, writeFileIfChanged, writeHarnessConfig };

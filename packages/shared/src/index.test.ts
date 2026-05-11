@@ -20,13 +20,23 @@ import {
 describe('shared contract helpers', () => {
   it('should round-trip contract fields', () => {
     const contract: Contract = {
+      version: '2.0',
+      taskId: 'task-1',
       goal: '修复状态展示',
       templateName: 'bug-fix',
       riskLevel: 'medium',
+      estimatedComplexity: 'medium',
+      requiredChecks: ['test'],
       scopeInclude: ['packages/cli/src'],
       scopeExclude: ['dist/**'],
-      acceptanceCriteria: ['file:result.txt', 'contains:result.txt::ok'],
+      acceptanceCriteria: [
+        { criterion: 'file:result.txt', verifiableBy: 'test' },
+        { criterion: 'contains:result.txt::ok', verifiableBy: 'test' },
+      ],
       outOfScope: ['重构 workflow'],
+      linkedSpec: 'requirement.md',
+      linkedDesign: 'design.md',
+      createdAt: '2026-04-20T00:00:00.000Z',
     };
 
     expect(parseContract(serializeContract(contract))).toEqual(contract);
@@ -43,23 +53,6 @@ describe('shared contract helpers', () => {
       sourceOfTruthDir: '.harness/hosts',
       fallbackCreateTaskWithoutPlanner: true,
       codexUserPromptSubmitHookEnabled: true,
-      hostSubagents: {
-        planner: {
-          useHostPlanMode: false,
-          models: {
-            'claude-code': 'sonnet',
-            codex: 'gpt-5.4-mini',
-            'gemini-cli': 'gemini-flash',
-          },
-        },
-        evaluator: {
-          models: {
-            'claude-code': 'opus',
-            codex: 'gpt-5.4',
-            'gemini-cli': 'gemini-pro',
-          },
-        },
-      },
       adapterKind: 'codex',
       adapterCommand: 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"',
     };
@@ -71,6 +64,25 @@ describe('shared contract helpers', () => {
     const report: TaskReport = {
       taskId: 'task-1',
       goal: '修复状态展示',
+      finalStage: 'commit_gate',
+      commitDecision: 'pass',
+      artifacts: {
+        requirement: 'requirement.md',
+        contract: 'contract.yaml',
+        design: 'design.md',
+        taskBreakdown: 'task-breakdown.md',
+        implementationNotes: 'implementation-notes.md',
+        review: 'review.md',
+        residentReview: 'resident-review.md',
+        testReport: 'test-report.md',
+        baselineEvidence: 'evidence/baseline.json',
+        currentEvidence: 'evidence/current.json',
+        baselineDiff: 'evidence/baseline-diff.json',
+        commitSummary: 'commit-summary.md',
+      },
+      metrics: { llmCalls: 0, durationSeconds: 0, retries: 0 },
+      createdAt: '2026-04-20T00:00:00.000Z',
+      finishedAt: '2026-04-20T00:00:00.000Z',
       adapter: {
         kind: 'custom',
         command: 'echo ok',
@@ -88,6 +100,9 @@ describe('shared contract helpers', () => {
           },
         ],
         changedFiles: ['packages/cli/src/commands/status.ts'],
+        lintWarningsTotal: 0,
+        todoCount: 0,
+        gitDirtyFiles: 1,
       },
       commitGate: {
         passed: true,
@@ -141,7 +156,9 @@ describe('shared contract helpers', () => {
 
     expect(contract.scopeInclude).toEqual(['src/foo/', 'src/bar/']);
     expect(contract.scopeExclude).toEqual(['docs/']);
-    expect(contract.acceptanceCriteria).toEqual(['test passes']);
+    expect(contract.acceptanceCriteria).toEqual([
+      { criterion: 'test passes', verifiableBy: 'manual' },
+    ]);
     expect(contract.outOfScope).toEqual(['refactor']);
   });
 
@@ -202,6 +219,12 @@ describe('shared contract helpers', () => {
         JSON.stringify({
           taskId: 'task-1',
           goal: '修复状态展示',
+          finalStage: 'commit_gate',
+          commitDecision: 'pass',
+          artifacts: {},
+          metrics: { llmCalls: 0, durationSeconds: 0, retries: 0 },
+          createdAt: '2026-04-20T00:00:00.000Z',
+          finishedAt: '2026-04-20T00:00:00.000Z',
           adapter: {
             kind: 'custom',
             command: 'echo ok',
@@ -209,7 +232,7 @@ describe('shared contract helpers', () => {
             stdout: 'ok',
             stderr: '',
           },
-          evidence: { checks: [], changedFiles: [] },
+          evidence: { checks: [], changedFiles: [], lintWarningsTotal: 0, todoCount: 0, gitDirtyFiles: 0 },
           commitGate: {
             passed: true,
             decision: 'pass',

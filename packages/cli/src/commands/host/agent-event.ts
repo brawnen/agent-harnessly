@@ -1,20 +1,30 @@
+import { AGENT_ROLES } from '@harnessly/core';
+import type { AgentRole } from '@harnessly/shared';
+
 import { appendHarnessEvent } from '../../utils/events';
 import { readActiveTaskId } from '../../utils/hosts';
 import { printJson } from '../../utils/output';
 
-type AgentName = 'harness-planner' | 'harness-evaluator';
 type AgentEventName = 'started' | 'completed';
 
 function readStringFlag(flags: Record<string, string | boolean>, name: string): string {
   return typeof flags[name] === 'string' ? flags[name].trim() : '';
 }
 
-function normalizeAgent(value: string): AgentName {
-  if (value === 'harness-planner' || value === 'harness-evaluator') {
-    return value;
+/**
+ * 把 sub-agent 输入字符串归一化为 v3-core 5 角色之一。
+ * 接受两种写法：`requirement` 或 `harness-requirement`（host 文件名前缀形式），
+ * 兼容主 agent 报告 sub-agent 名时可能带前缀的情况。
+ */
+function normalizeAgent(value: string): AgentRole {
+  const stripped = value.startsWith('harness-') ? value.slice('harness-'.length) : value;
+  if ((AGENT_ROLES as readonly string[]).includes(stripped)) {
+    return stripped as AgentRole;
   }
 
-  throw new Error('缺少或非法 agent。允许值：harness-planner, harness-evaluator');
+  throw new Error(
+    `缺少或非法 agent。允许值：${AGENT_ROLES.join(', ')}（亦接受 harness-<role> 前缀）`,
+  );
 }
 
 function normalizeEvent(value: string): AgentEventName {
@@ -38,7 +48,8 @@ export async function runHostAgentEvent(
 
   await appendHarnessEvent(workDir, {
     type: `subagent.${event}`,
-    agent,
+    role: agent,
+    agent: `harness-${agent}`,
     taskId,
     model,
   });
@@ -46,7 +57,8 @@ export async function runHostAgentEvent(
   printJson({
     recorded: true,
     type: `subagent.${event}`,
-    agent,
+    role: agent,
+    agent: `harness-${agent}`,
     taskId,
     model,
   });

@@ -18,8 +18,8 @@ export interface EvaluateCommitGateOptions {
  * 评估 commit_gate 决策。
  *
  * 三态规则（v3-core SPEC §6.6）：
- * - 任何硬性失败 → 'block'（禁止 commit）
- * - 无硬性失败但存在软性告警 → 'warn'（允许 commit 但需 PM 确认）
+ * - 任何硬性失败 → 'fail'（禁止 commit）
+ * - 无硬性失败但存在软性告警 → 'needs_human_review'
  * - 全部通过 → 'pass'
  *
  * 当前硬性维度：
@@ -64,7 +64,7 @@ export function evaluateCommitGate(
   }
 
   const decision: CommitDecision =
-    failures.length > 0 ? 'block' : warnings.length > 0 ? 'warn' : 'pass';
+    failures.length > 0 ? 'fail' : warnings.length > 0 ? 'needs_human_review' : 'pass';
 
   return {
     passed: decision === 'pass',

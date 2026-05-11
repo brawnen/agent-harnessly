@@ -27,7 +27,7 @@ function pickRecommendation(
     return 'idle';
   }
 
-  if (status === 'failed') {
+  if (status === 'blocked' || status === 'aborted') {
     return 'retry';
   }
 

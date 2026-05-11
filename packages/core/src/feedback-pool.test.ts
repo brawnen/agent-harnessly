@@ -67,14 +67,14 @@ describe('appendFeedbackEntry + loadFeedbackPool', () => {
     await ensureHarnessDirectories(workDir);
 
     await appendFeedbackEntry(workDir, makeEntry({ taskId: 'a' }));
-    await appendFeedbackEntry(workDir, makeEntry({ taskId: 'b', decision: 'warn' }));
+    await appendFeedbackEntry(workDir, makeEntry({ taskId: 'b', decision: 'needs_human_review' }));
 
     const text = await readFile(getFeedbackPoolPath(workDir), 'utf8');
     expect(text.split('\n').filter(Boolean)).toHaveLength(2);
 
     const entries = await loadFeedbackPool(workDir);
     expect(entries.map((e) => e.taskId)).toEqual(['a', 'b']);
-    expect(entries[1].decision).toBe('warn');
+    expect(entries[1].decision).toBe('needs_human_review');
   });
 
   it('returns empty array when pool file does not exist', async () => {
@@ -119,13 +119,20 @@ describe('appendFeedbackEntry + loadFeedbackPool', () => {
 describe('buildFeedbackEntry', () => {
   function makeCtx(overrides: Partial<TaskContext> = {}): TaskContext {
     const contract: Contract = {
+      version: '2.0',
+      taskId: 'task-1',
       goal: '修复 list 输出',
       templateName: 'bug-fix',
       riskLevel: 'low',
+      estimatedComplexity: 'simple',
+      requiredChecks: [],
       scopeInclude: ['packages/cli/src'],
       scopeExclude: [],
-      acceptanceCriteria: ['list 显示 stage'],
+      acceptanceCriteria: [{ criterion: 'list 显示 stage', verifiableBy: 'manual' }],
       outOfScope: [],
+      linkedSpec: 'requirement.md',
+      linkedDesign: 'design.md',
+      createdAt: '2026-04-20T00:00:00.000Z',
     };
     return {
       taskId: 'task-1',
@@ -142,17 +149,14 @@ describe('buildFeedbackEntry', () => {
         sourceOfTruthDir: '.harness/hosts',
         fallbackCreateTaskWithoutPlanner: false,
         codexUserPromptSubmitHookEnabled: true,
-        hostSubagents: {
-          planner: { useHostPlanMode: false, models: { 'claude-code': 'haiku' } },
-          evaluator: { models: { 'claude-code': 'sonnet' } },
-        },
         adapterKind: 'claude-code',
         adapterCommand: '',
       },
       state: {
         taskId: 'task-1',
-        status: 'passed',
+        status: 'completed',
         currentStage: 'commit_gate',
+        currentOwner: 'pm',
         createdAt: '2026-04-20T00:00:00.000Z',
         updatedAt: '2026-04-20T00:00:00.000Z',
         completedStages: ['spec', 'design', 'execute', 'review', 'test', 'commit_gate'],
@@ -174,8 +178,33 @@ describe('buildFeedbackEntry', () => {
     return {
       taskId: 'task-1',
       goal: '修复 list 输出',
+      finalStage: 'commit_gate',
+      commitDecision: 'pass',
+      artifacts: {
+        requirement: 'requirement.md',
+        contract: 'contract.yaml',
+        design: 'design.md',
+        taskBreakdown: 'task-breakdown.md',
+        implementationNotes: 'implementation-notes.md',
+        review: 'review.md',
+        residentReview: 'resident-review.md',
+        testReport: 'test-report.md',
+        baselineEvidence: 'evidence/baseline.json',
+        currentEvidence: 'evidence/current.json',
+        baselineDiff: 'evidence/baseline-diff.json',
+        commitSummary: 'commit-summary.md',
+      },
+      metrics: { llmCalls: 0, durationSeconds: 0, retries: 0 },
+      createdAt: '2026-04-20T00:00:00.000Z',
+      finishedAt: '2026-04-20T01:00:00.000Z',
       adapter,
-      evidence: { checks: [], changedFiles: ['a.ts', 'b.ts'] },
+      evidence: {
+        checks: [],
+        changedFiles: ['a.ts', 'b.ts'],
+        lintWarningsTotal: 0,
+        todoCount: 0,
+        gitDirtyFiles: 2,
+      },
       commitGate: {
         passed: true,
         decision: 'pass',
@@ -207,8 +236,9 @@ describe('buildFeedbackEntry', () => {
     const ctx = makeCtx({
       state: {
         taskId: 'task-1',
-        status: 'failed',
+        status: 'blocked',
         currentStage: 'test',
+        currentOwner: 'tester',
         createdAt: '2026-04-20T00:00:00.000Z',
         updatedAt: '2026-04-20T00:00:00.000Z',
         completedStages: ['spec', 'design', 'execute', 'review'],
@@ -220,7 +250,7 @@ describe('buildFeedbackEntry', () => {
     const report = makeReport({
       commitGate: {
         passed: false,
-        decision: 'block',
+        decision: 'fail',
         failures: ['lint'],
         warnings: [],
         preExistingFailures: [],
@@ -229,7 +259,7 @@ describe('buildFeedbackEntry', () => {
     });
 
     const entry = buildFeedbackEntry(ctx, report);
-    expect(entry.decision).toBe('block');
+    expect(entry.decision).toBe('fail');
     expect(entry.failureReason).toBe('lint failed');
     expect(entry.failureStage).toBe('test');
     expect(entry.retryCount).toBe(2);
@@ -239,8 +269,9 @@ describe('buildFeedbackEntry', () => {
     const ctx = makeCtx({
       state: {
         taskId: 'task-1',
-        status: 'passed',
+        status: 'completed',
         currentStage: 'commit_gate',
+        currentOwner: 'pm',
         createdAt: '2026-04-20T00:00:00.000Z',
         updatedAt: '2026-04-20T00:00:00.000Z',
         completedStages: ['spec', 'design', 'execute', 'review', 'test', 'commit_gate'],
@@ -313,7 +344,7 @@ describe('renderFeedbackEntriesAsLines', () => {
 
   it('decorates failed entries with @<stage>', () => {
     const lines = renderFeedbackEntriesAsLines([
-      makeEntry({ taskId: 't1', decision: 'block', failureStage: 'test' }),
+      makeEntry({ taskId: 't1', decision: 'fail', failureStage: 'test' }),
     ]);
     expect(lines[0]).toContain('@test');
   });

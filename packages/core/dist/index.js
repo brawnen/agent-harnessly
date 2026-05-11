@@ -85,23 +85,6 @@ function createDefaultHarnessConfig(projectType, hosts = ["claude-code"]) {
     sourceOfTruthDir: ".harness/hosts",
     fallbackCreateTaskWithoutPlanner: false,
     codexUserPromptSubmitHookEnabled: true,
-    hostSubagents: {
-      planner: {
-        useHostPlanMode: true,
-        models: {
-          "claude-code": "haiku",
-          codex: "gpt-5.4-mini",
-          "gemini-cli": "gemini-flash"
-        }
-      },
-      evaluator: {
-        models: {
-          "claude-code": "sonnet",
-          codex: "gpt-5.4",
-          "gemini-cli": "gemini-pro"
-        }
-      }
-    },
     adapterKind: getDefaultAdapterKind(defaultHost),
     adapterCommand: getDefaultAdapterCommand(defaultHost)
   };
@@ -124,10 +107,39 @@ function getHarnessPaths(workDir) {
     hostsDir: path2.join(harnessDir, "hosts"),
     tasksDir: path2.join(harnessDir, "tasks"),
     templatesDir: path2.join(harnessDir, "templates"),
+    skillsDir: path2.join(harnessDir, "skills"),
     configFile: path2.join(harnessDir, "harness.config.yaml"),
+    structureRulesFile: path2.join(harnessDir, "structure-rules.yaml"),
+    reviewAgentsFile: path2.join(harnessDir, "review-agents.yaml"),
     globalRulesFile: path2.join(harnessDir, "GLOBAL_RULES.md"),
     activeTaskFile: path2.join(harnessDir, "active-task.txt")
   };
+}
+function renderStructureRulesTemplate() {
+  return [
+    "file_length:",
+    "  max: 500",
+    "  exclude:",
+    "    - dist/",
+    "    - node_modules/",
+    "unique_implementations: []",
+    "package_dependencies:",
+    "  forbid: []",
+    "  fix_hint: \u4FDD\u6301\u5305\u8FB9\u754C\u6E05\u6670\uFF0C\u907F\u514D\u53CD\u5411\u4F9D\u8D56",
+    ""
+  ].join("\n");
+}
+function renderReviewAgentsTemplate() {
+  return [
+    "review_agents:",
+    "  - name: reliability",
+    "    triggers: [pre_merge]",
+    "    model: gpt-5.5",
+    "    blocking_severity: P0",
+    "    prompt: |",
+    "      \u68C0\u67E5\u53EF\u9760\u6027\u3001\u56DE\u5F52\u98CE\u9669\u548C\u8BC1\u636E\u7F3A\u53E3\u3002",
+    ""
+  ].join("\n");
 }
 async function ensureHarnessDirectories(workDir) {
   const paths = getHarnessPaths(workDir);
@@ -137,6 +149,7 @@ async function ensureHarnessDirectories(workDir) {
   await mkdir(paths.hostsDir, { recursive: true });
   await mkdir(paths.tasksDir, { recursive: true });
   await mkdir(paths.templatesDir, { recursive: true });
+  await mkdir(paths.skillsDir, { recursive: true });
   return paths;
 }
 function renderGlobalRulesTemplate() {
@@ -200,9 +213,10 @@ var DEFAULT_AGENT_MANIFESTS = {
     description: "\u5728 SPEC \u9636\u6BB5\u5E2E PM \u6F84\u6E05\u9700\u6C42\u3001\u5217\u4E3E\u53EF\u9A8C\u6536\u70B9",
     stage: "spec",
     enabled: true,
+    planModeEnabled: false,
     models: {
       "claude-code": "haiku",
-      codex: "gpt-5.4-mini",
+      codex: "gpt-5.5",
       "gemini-cli": "gemini-flash"
     },
     toolWhitelist: ["Read", "Bash"],
@@ -229,9 +243,10 @@ var DEFAULT_AGENT_MANIFESTS = {
     description: "\u5728 DESIGN \u9636\u6BB5\u57FA\u4E8E contract \u5217\u5B9E\u65BD\u6B65\u9AA4\u3001\u4F9D\u8D56\u4E0E\u98CE\u9669",
     stage: "design",
     enabled: true,
+    planModeEnabled: false,
     models: {
       "claude-code": "sonnet",
-      codex: "gpt-5.4",
+      codex: "gpt-5.5",
       "gemini-cli": "gemini-pro"
     },
     toolWhitelist: ["Read", "Bash", "Glob", "Grep"],
@@ -258,9 +273,11 @@ var DEFAULT_AGENT_MANIFESTS = {
     description: "\u5728 EXECUTE \u9636\u6BB5\u6309 plan \u6267\u884C\uFF08headless \u9002\u914D\uFF1B\u4E3B\u8DEF\u5F84\u4E0B\u7531\u4E3B agent \u62C5\u4EFB\uFF09",
     stage: "execute",
     enabled: false,
+    planModeEnabled: false,
     models: {
-      "claude-code": "sonnet",
-      codex: "gpt-5.4",
+      // EXECUTE 阶段是最重的活：用各 host 当前主力模型
+      "claude-code": "opus",
+      codex: "gpt-5.5",
       "gemini-cli": "gemini-pro"
     },
     toolWhitelist: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
@@ -288,9 +305,10 @@ var DEFAULT_AGENT_MANIFESTS = {
     description: "\u5728 REVIEW \u9636\u6BB5\u5BF9\u6539\u52A8\u505A\u8BED\u4E49\u5C42\u5BA1\u67E5\uFF08scope\u3001\u654F\u611F\u6587\u4EF6\u3001\u526F\u4F5C\u7528\uFF09",
     stage: "review",
     enabled: true,
+    planModeEnabled: false,
     models: {
       "claude-code": "sonnet",
-      codex: "gpt-5.4",
+      codex: "gpt-5.5",
       "gemini-cli": "gemini-pro"
     },
     toolWhitelist: ["Read", "Bash", "Glob", "Grep"],
@@ -317,9 +335,10 @@ var DEFAULT_AGENT_MANIFESTS = {
     description: "\u5728 TEST \u9636\u6BB5\u8DD1 required checks \u4E0E acceptance \u6821\u9A8C",
     stage: "test",
     enabled: true,
+    planModeEnabled: false,
     models: {
       "claude-code": "sonnet",
-      codex: "gpt-5.4",
+      codex: "gpt-5.5",
       "gemini-cli": "gemini-pro"
     },
     toolWhitelist: ["Read", "Bash"],
@@ -424,9 +443,10 @@ var STAGE_TO_ROLE = {
 function getRoleForStage(stage) {
   return STAGE_TO_ROLE[stage] ?? null;
 }
+var COMPLETION_FALLBACK_ROLES = ["reviewer", "tester", "designer", "requirement"];
 function pickRecommendedAgent(intent, stage, enabledRoles) {
   if (intent === "new_task") {
-    return enabledRoles.has("requirement") ? "harness-requirement" : "harness-planner";
+    return enabledRoles.has("requirement") ? "harness-requirement" : null;
   }
   if (intent === "resume_task") {
     if (!stage) {
@@ -447,7 +467,12 @@ function pickRecommendedAgent(intent, stage, enabledRoles) {
       return `harness-${role}`;
     }
   }
-  return "harness-evaluator";
+  for (const candidate of COMPLETION_FALLBACK_ROLES) {
+    if (enabledRoles.has(candidate)) {
+      return `harness-${candidate}`;
+    }
+  }
+  return null;
 }
 function collectEnabledRoles(manifests) {
   const result = /* @__PURE__ */ new Set();
@@ -499,6 +524,9 @@ import {
 var FEEDBACK_POOL_FILENAME = "feedback-pool.jsonl";
 function getFeedbackPoolPath(workDir) {
   return path4.join(getHarnessPaths(workDir).harnessDir, FEEDBACK_POOL_FILENAME);
+}
+function getFeedbackHistoryPath(workDir) {
+  return path4.join(getHarnessPaths(workDir).harnessDir, "feedback-history.md");
 }
 function isMissingFileError2(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -593,14 +621,39 @@ function renderFeedbackEntriesAsLines(entries) {
     return parts.join(" ");
   });
 }
+async function promoteFeedbackEntry(workDir, taskId, reason = "manual promotion") {
+  const entries = await loadFeedbackPool(workDir);
+  const entry = [...entries].reverse().find((item) => item.taskId === taskId);
+  if (!entry) {
+    throw new Error(`feedback entry not found for task ${taskId}`);
+  }
+  const historyPath = getFeedbackHistoryPath(workDir);
+  await mkdir2(path4.dirname(historyPath), { recursive: true });
+  await appendFile(
+    historyPath,
+    [
+      `## ${(/* @__PURE__ */ new Date()).toISOString()} ${entry.taskId}`,
+      "",
+      `- goal: ${entry.goal}`,
+      `- decision: ${entry.decision}`,
+      `- template: ${entry.template ?? "general"}`,
+      `- risk_level: ${entry.riskLevel ?? "unknown"}`,
+      `- reason: ${reason}`,
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+  return entry;
+}
 
 // src/task.ts
 function createInitialTaskState(taskId) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     taskId,
-    status: "created",
+    status: "active",
     currentStage: "created",
+    currentOwner: "pm",
     createdAt: now,
     updatedAt: now,
     completedStages: [],
@@ -618,11 +671,31 @@ async function readJson(filePath) {
 function isMissingFileError3(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
+function ownerForStage(stage) {
+  switch (stage) {
+    case "spec":
+      return "requirement";
+    case "design":
+      return "designer";
+    case "execute":
+    case "retry":
+      return "developer";
+    case "review":
+      return "reviewer";
+    case "test":
+      return "tester";
+    case "commit_gate":
+    case "created":
+    case "failed":
+      return "pm";
+  }
+}
 function touchState(state, status, stage) {
   return {
     ...state,
     status,
     currentStage: stage,
+    currentOwner: ownerForStage(stage),
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
@@ -647,6 +720,27 @@ var TaskManager = class {
   }
   getContractFile(taskDir) {
     return path5.join(taskDir, "contract.yaml");
+  }
+  getRequirementFile(taskDir) {
+    return path5.join(taskDir, "requirement.md");
+  }
+  getDesignFile(taskDir) {
+    return path5.join(taskDir, "design.md");
+  }
+  getTaskBreakdownFile(taskDir) {
+    return path5.join(taskDir, "task-breakdown.md");
+  }
+  getImplementationNotesFile(taskDir) {
+    return path5.join(taskDir, "implementation-notes.md");
+  }
+  getReviewFile(taskDir) {
+    return path5.join(taskDir, "review.md");
+  }
+  getResidentReviewFile(taskDir) {
+    return path5.join(taskDir, "resident-review.md");
+  }
+  getTestReportFile(taskDir) {
+    return path5.join(taskDir, "test-report.md");
   }
   getPlanFile(taskDir) {
     return path5.join(taskDir, "plan.md");
@@ -694,15 +788,36 @@ var TaskManager = class {
   }
   async saveContract(ctx, contract) {
     ctx.contract = contract;
-    ctx.state = touchState(ctx.state, "planning", "spec");
+    ctx.state = touchState(ctx.state, "active", "spec");
     await writeFile3(this.getContractFile(ctx.taskDir), serializeContract(contract), "utf8");
     await this.saveState(ctx);
   }
+  async saveRequirement(ctx, requirement) {
+    await writeFile3(this.getRequirementFile(ctx.taskDir), requirement, "utf8");
+  }
   async savePlan(ctx, plan) {
     ctx.plan = plan;
-    ctx.state = touchState(ctx.state, "ready", "design");
+    ctx.state = touchState(ctx.state, "active", "design");
     await writeFile3(this.getPlanFile(ctx.taskDir), plan, "utf8");
     await this.saveState(ctx);
+  }
+  async saveDesign(ctx, design) {
+    await writeFile3(this.getDesignFile(ctx.taskDir), design, "utf8");
+  }
+  async saveTaskBreakdown(ctx, taskBreakdown) {
+    await writeFile3(this.getTaskBreakdownFile(ctx.taskDir), taskBreakdown, "utf8");
+  }
+  async saveImplementationNotes(ctx, notes) {
+    await writeFile3(this.getImplementationNotesFile(ctx.taskDir), notes, "utf8");
+  }
+  async saveReviewMarkdown(ctx, review) {
+    await writeFile3(this.getReviewFile(ctx.taskDir), review, "utf8");
+  }
+  async saveResidentReview(ctx, review) {
+    await writeFile3(this.getResidentReviewFile(ctx.taskDir), review, "utf8");
+  }
+  async saveTestReport(ctx, report) {
+    await writeFile3(this.getTestReportFile(ctx.taskDir), report, "utf8");
   }
   async savePrompt(ctx, prompt) {
     const filePath = this.getPromptFile(ctx.taskDir);
@@ -710,7 +825,7 @@ var TaskManager = class {
     return filePath;
   }
   async saveReport(ctx, report) {
-    ctx.state = touchState(ctx.state, report.commitReady ? "passed" : "failed", "commit_gate");
+    ctx.state = touchState(ctx.state, report.commitReady ? "completed" : "blocked", "commit_gate");
     await writeFile3(this.getReportFile(ctx.taskDir), serializeTaskReport(report), "utf8");
     await this.saveState(ctx);
     if (report.commitGate.decision === "pass") {
@@ -734,7 +849,7 @@ var TaskManager = class {
   }
   async markFailure(ctx, stage, reason) {
     ctx.state = {
-      ...touchState(ctx.state, "failed", stage),
+      ...touchState(ctx.state, "blocked", stage),
       lastFailureReason: reason,
       lastFailureStage: stage
     };
@@ -743,7 +858,7 @@ var TaskManager = class {
   }
   async markRetrying(ctx) {
     ctx.state = {
-      ...touchState(ctx.state, "executing", "retry"),
+      ...touchState(ctx.state, "active", "retry"),
       retryCount: ctx.state.retryCount + 1
     };
     await this.saveState(ctx);
@@ -828,6 +943,7 @@ var TaskManager = class {
           goal: meta.goal,
           status: state.status,
           currentStage: state.currentStage,
+          currentOwner: state.currentOwner ?? ownerForStage(state.currentStage),
           retryCount: state.retryCount,
           lastFailureStage: state.lastFailureStage,
           updatedAt: state.updatedAt
@@ -857,8 +973,8 @@ async function fileExists2(filePath) {
   }
 }
 async function copyIfMissingOrForced(source, target, force) {
-  const exists = await fileExists2(target);
-  if (!exists) {
+  const exists2 = await fileExists2(target);
+  if (!exists2) {
     await mkdir4(path6.dirname(target), { recursive: true });
     await copyFile(source, target);
     return "created";
@@ -920,17 +1036,17 @@ function renderArchiveReadme(args) {
   );
   return lines.join("\n");
 }
-function getArchiveTargetPaths(workDir, taskId, topic = DEFAULT_TOPIC) {
+function getArchiveTargetPaths(workDir, _taskId, topic = DEFAULT_TOPIC) {
   const archDir = path6.join(workDir, "docs", "architecture");
   const topicDir = path6.join(archDir, topic);
   return {
     archDir,
-    topicDir,
-    taskDir: path6.join(topicDir, taskId)
+    topicDir
   };
 }
 async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
   const topic = options.topic?.trim() || DEFAULT_TOPIC;
+  const mode = options.mode ?? "new_topic";
   const force = options.force ?? false;
   const ctx = await new TaskManager().load(taskId, workDir);
   const targets = getArchiveTargetPaths(workDir, taskId, topic);
@@ -938,28 +1054,32 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
   const files = [];
   if (want.contract) {
     const source = path6.join(ctx.taskDir, "contract.yaml");
+    const requirementSource = path6.join(ctx.taskDir, "requirement.md");
     if (!await fileExists2(source)) {
       throw new Error(
         `task ${taskId} \u7F3A\u5C11 contract.yaml\uFF1B\u4E0D\u80FD\u5F52\u6863 requirement \u5DE5\u4EF6\uFF08kind=${kind}\uFF09`
       );
     }
-    const target = path6.join(targets.taskDir, "contract.yaml");
-    const status = await copyIfMissingOrForced(source, target, force);
-    files.push({ source, target, status });
+    const primarySource = await fileExists2(requirementSource) ? requirementSource : source;
+    const target = path6.join(targets.topicDir, `${taskId}.requirement.md`);
+    const status = await copyIfMissingOrForced(primarySource, target, force || mode === "replace");
+    files.push({ source: primarySource, target, status });
   }
   if (want.plan) {
     const source = path6.join(ctx.taskDir, "plan.md");
+    const designSource = path6.join(ctx.taskDir, "design.md");
     if (!await fileExists2(source)) {
       throw new Error(`task ${taskId} \u7F3A\u5C11 plan.md\uFF1B\u4E0D\u80FD\u5F52\u6863 design \u5DE5\u4EF6\uFF08kind=${kind}\uFF09`);
     }
-    const target = path6.join(targets.taskDir, "plan.md");
-    const status = await copyIfMissingOrForced(source, target, force);
-    files.push({ source, target, status });
+    const primarySource = await fileExists2(designSource) ? designSource : source;
+    const target = path6.join(targets.topicDir, `${taskId}.design.md`);
+    const status = await copyIfMissingOrForced(primarySource, target, force || mode === "replace");
+    files.push({ source: primarySource, target, status });
   }
   const reportFile = path6.join(ctx.taskDir, "report.json");
   const report = await readTaskReportSafe(reportFile);
-  const readmePath = path6.join(targets.taskDir, "README.md");
-  await mkdir4(targets.taskDir, { recursive: true });
+  const readmePath = path6.join(targets.topicDir, "README.md");
+  await mkdir4(targets.topicDir, { recursive: true });
   const readmeContent = renderArchiveReadme({
     taskId,
     goal: ctx.goal,
@@ -980,11 +1100,77 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
     target: readmePath,
     status: previousReadme === null ? "created" : "updated"
   });
+  const metadataPath = path6.join(targets.topicDir, `${taskId}.promotion.json`);
+  const previousMetadata = await readFile5(metadataPath, "utf8").catch((error) => {
+    if (isMissingFileError4(error)) return null;
+    throw error;
+  });
+  await writeFile4(
+    metadataPath,
+    `${JSON.stringify(
+      {
+        taskId,
+        topic,
+        mode,
+        kind,
+        promotedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        sourceDir: `.harness/tasks/${taskId}`,
+        files: files.map((file) => path6.relative(workDir, file.target))
+      },
+      null,
+      2
+    )}
+`,
+    "utf8"
+  );
+  files.push({
+    source: "(generated)",
+    target: metadataPath,
+    status: previousMetadata === null ? "created" : "updated"
+  });
   return {
     taskId,
     topic,
-    targetDir: targets.taskDir,
+    targetDir: targets.topicDir,
     files
+  };
+}
+
+// src/artifact-guard.ts
+import { access as access2 } from "fs/promises";
+import path7 from "path";
+async function exists(filePath) {
+  try {
+    await access2(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+var REQUIRED_TASK_ARTIFACTS = [
+  "requirement.md",
+  "contract.yaml",
+  "design.md",
+  "task-breakdown.md",
+  "implementation-notes.md",
+  "review.md",
+  "resident-review.md",
+  "test-report.md",
+  "evidence/current.json"
+];
+async function runArtifactGuard(taskDir) {
+  const missing = [];
+  for (const relative of REQUIRED_TASK_ARTIFACTS) {
+    if (!await exists(path7.join(taskDir, relative))) {
+      missing.push(relative);
+    }
+  }
+  return {
+    name: "artifact.guard",
+    status: missing.length === 0 ? "passed" : "failed",
+    command: "check .harness task artifacts",
+    detail: missing.length === 0 ? "\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\u5B8C\u6574" : `\u7F3A\u5C11\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\uFF1A${missing.join(", ")}`,
+    fixHint: missing.length === 0 ? void 0 : "\u56DE\u5230\u5BF9\u5E94\u9636\u6BB5\u751F\u6210\u7F3A\u5931\u5DE5\u4EF6\uFF0C\u4E0D\u8981\u53EA\u4F9D\u8D56\u5BF9\u8BDD\u6587\u672C"
   };
 }
 
@@ -1069,19 +1255,28 @@ function matchTemplate(goal) {
 }
 
 // src/contract.ts
-function generateFallbackContract(goal, templateName) {
+function generateFallbackContract(goal, templateName, taskId = "") {
   const template = createTemplateRegistry().get(templateName);
   return {
+    version: "2.0",
+    taskId,
     goal,
     templateName,
     riskLevel: template.defaultRiskLevel,
+    estimatedComplexity: template.defaultRiskLevel === "low" ? "simple" : "medium",
+    requiredChecks: [],
     scopeInclude: [...template.defaultScopeInclude],
     scopeExclude: [...template.defaultScopeExclude],
     acceptanceCriteria: [
-      `\u76EE\u6807\u201C${goal}\u201D\u5DF2\u88AB\u5B9E\u73B0\u6216\u4FEE\u590D`,
+      { criterion: `\u76EE\u6807\u201C${goal}\u201D\u5DF2\u88AB\u5B9E\u73B0\u6216\u4FEE\u590D`, verifiableBy: "manual" },
       ...template.defaultAcceptanceCriteria.slice(1)
-    ],
-    outOfScope: [...template.defaultOutOfScope]
+    ].map(
+      (item) => typeof item === "string" ? { criterion: item, verifiableBy: "manual" } : item
+    ),
+    outOfScope: [...template.defaultOutOfScope],
+    linkedSpec: "requirement.md",
+    linkedDesign: "design.md",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
 function createContractSystemPrompt() {
@@ -1111,7 +1306,7 @@ function createContractPrompt(goal, templateName, fallback) {
   ].join("\n");
 }
 async function generateContract(options) {
-  const fallback = generateFallbackContract(options.goal, options.templateName);
+  const fallback = generateFallbackContract(options.goal, options.templateName, options.taskId);
   if (!options.llmClient) {
     return fallback;
   }
@@ -1124,9 +1319,15 @@ async function generateContract(options) {
       toolDescription: "\u8F93\u51FA Harnessly contract"
     });
     return validateContract({
+      ...fallback,
       ...generated,
+      version: "2.0",
+      taskId: options.taskId ?? "",
       goal: options.goal,
-      templateName: options.templateName
+      templateName: options.templateName,
+      linkedSpec: "requirement.md",
+      linkedDesign: "design.md",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
     });
   } catch {
     return fallback;
@@ -1139,6 +1340,9 @@ function checkContract(contract) {
   }
   if (!contract.templateName) {
     failures.push("template_name \u7F3A\u5931");
+  }
+  if (contract.version !== "2.0") {
+    failures.push("version \u5FC5\u987B\u4E3A 2.0");
   }
   if (contract.scopeInclude.length === 0) {
     failures.push("scope_include \u4E0D\u80FD\u4E3A\u7A7A");
@@ -1156,10 +1360,8 @@ function checkContract(contract) {
 }
 
 // src/evidence.ts
-import { access as access3, readFile as readFile7 } from "fs/promises";
-import { exec as exec2 } from "child_process";
-import { promisify as promisify2 } from "util";
-import path8 from "path";
+import { exec as exec3 } from "child_process";
+import { promisify as promisify3 } from "util";
 
 // src/scope.ts
 function isStructuredScope(pattern) {
@@ -1190,43 +1392,189 @@ function runScopeCheck(contract, changedFiles) {
       detail: "contract \u7F3A\u5931"
     };
   }
-  const patterns = contract.scopeInclude.filter(isStructuredScope);
+  const patterns = contract.scopeExclude.filter(isStructuredScope);
   if (patterns.length === 0) {
     return {
       name: "scope",
-      status: "skipped",
+      status: "passed",
       command: "scope-check",
-      detail: "scope_include \u8FD8\u4E0D\u662F\u7ED3\u6784\u5316\u8DEF\u5F84\uFF0C\u6682\u4E0D\u505A\u786C\u6821\u9A8C"
+      detail: "scope.exclude \u672A\u914D\u7F6E\u7ED3\u6784\u5316 pattern\uFF0C\u6309 deny-list \u8BED\u4E49\u5168\u90E8\u901A\u8FC7"
     };
   }
-  const outOfScopeFiles = changedFiles.filter(
-    (filePath) => !patterns.some((pattern) => matchesPattern(filePath, pattern))
-  );
-  if (outOfScopeFiles.length > 0) {
+  const violations = [];
+  for (const file of changedFiles) {
+    for (const pattern of patterns) {
+      if (matchesPattern(file, pattern)) {
+        violations.push({ file, pattern });
+        break;
+      }
+    }
+  }
+  if (violations.length > 0) {
+    const detail = violations.map((v) => `${v.file}\uFF08\u547D\u4E2D exclude pattern: ${v.pattern}\uFF09`).join("; ");
     return {
       name: "scope",
       status: "failed",
       command: "scope-check",
-      detail: `\u53D1\u73B0\u8D85\u51FA scope \u7684\u6587\u4EF6: ${outOfScopeFiles.join(", ")}`
+      detail: `\u68C0\u6D4B\u5230 scope.exclude \u547D\u4E2D\uFF1A${detail}`
     };
   }
   return {
     name: "scope",
     status: "passed",
     command: "scope-check",
-    detail: "\u53D8\u66F4\u6587\u4EF6\u4E0E scope \u4E00\u81F4"
+    detail: "\u53D8\u66F4\u6587\u4EF6\u672A\u547D\u4E2D\u4EFB\u4F55 scope.exclude pattern"
   };
 }
 
-// src/validation.ts
-import { access as access2, readFile as readFile6 } from "fs/promises";
+// src/skill.ts
+import { access as access3, mkdir as mkdir5, readFile as readFile6 } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
-import path7 from "path";
+import path8 from "path";
+import {
+  parseFlatYaml,
+  parseStringList,
+  skillSchema
+} from "@harnessly/shared";
 var execAsync = promisify(exec);
+function isMissingFileError5(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
 async function fileExists3(filePath) {
   try {
-    await access2(filePath);
+    await access3(filePath);
+    return true;
+  } catch (error) {
+    if (isMissingFileError5(error)) return false;
+    throw error;
+  }
+}
+function getSkillPath(workDir, checkName, language) {
+  return path8.join(getHarnessPaths(workDir).harnessDir, "skills", checkName, `${language}.yaml`);
+}
+async function loadSkill(workDir, checkName, language) {
+  const filePath = getSkillPath(workDir, checkName, language);
+  if (!await fileExists3(filePath)) {
+    return null;
+  }
+  const raw = parseFlatYaml(await readFile6(filePath, "utf8"));
+  return skillSchema.parse({
+    name: raw.name ?? checkName,
+    language: raw.language ?? language,
+    command: raw.command ?? "",
+    successExitCode: Number(raw.success_exit_code ?? "0"),
+    envRequired: parseStringList(raw.env_required),
+    detailOnPass: raw.detail_on_pass ?? `${checkName} \u901A\u8FC7`,
+    detailOnFailTemplate: raw.detail_on_fail_template ?? `${checkName} \u5931\u8D25`,
+    fixHintTemplate: raw.fix_hint_template ?? `\u4FEE\u590D ${checkName} \u5931\u8D25\u540E\u91CD\u8DD1`
+  });
+}
+function renderSkillTemplate(checkName, language, command) {
+  return [
+    `name: ${checkName}`,
+    `language: ${language}`,
+    `command: ${command}`,
+    "success_exit_code: 0",
+    "env_required:",
+    `detail_on_pass: ${checkName} \u901A\u8FC7`,
+    `detail_on_fail_template: ${checkName} \u5931\u8D25\uFF1A{stderr}`,
+    `fix_hint_template: \u4FEE\u590D ${checkName} \u5931\u8D25\u540E\u91CD\u8DD1\u547D\u4EE4\uFF1A${command}`,
+    ""
+  ].join("\n");
+}
+var DEFAULT_NODE_SKILL_COMMANDS = {
+  build: "npm run build",
+  lint: "npm run lint",
+  typecheck: "npm run typecheck",
+  test: "npm test"
+};
+async function writeDefaultSkillManifests(workDir, language, requiredChecks, force = false) {
+  const results = [];
+  if (language !== "node") {
+    return results;
+  }
+  for (const check of requiredChecks) {
+    const command = DEFAULT_NODE_SKILL_COMMANDS[check];
+    if (!command) continue;
+    const skillPath = getSkillPath(workDir, check, language);
+    await mkdir5(path8.dirname(skillPath), { recursive: true });
+    const status = await writeFileIfChanged(skillPath, renderSkillTemplate(check, language, command), force);
+    results.push({ check, language, status });
+  }
+  return results;
+}
+async function runSkillCheck(workDir, checkName, language) {
+  const started = Date.now();
+  const skill = await loadSkill(workDir, checkName, language);
+  const skillPath = getSkillPath(workDir, checkName, language);
+  if (!skill) {
+    return {
+      name: checkName,
+      status: "skipped",
+      command: `(missing skill) ${skillPath}`,
+      detail: `.harness/skills/${checkName}/${language}.yaml \u672A\u914D\u7F6E`,
+      fixHint: `\u8FD0\u884C harnessly init \u6216\u521B\u5EFA ${skillPath}`,
+      durationMs: Date.now() - started
+    };
+  }
+  const missingEnv = skill.envRequired.filter((name) => !process.env[name]);
+  if (missingEnv.length > 0) {
+    return {
+      name: checkName,
+      status: "skipped",
+      command: skill.command,
+      detail: `\u7F3A\u5C11\u73AF\u5883\u53D8\u91CF\uFF1A${missingEnv.join(", ")}`,
+      fixHint: `\u914D\u7F6E\u73AF\u5883\u53D8\u91CF\u540E\u91CD\u8DD1\uFF1A${missingEnv.join(", ")}`,
+      durationMs: Date.now() - started
+    };
+  }
+  try {
+    await execAsync(skill.command, {
+      cwd: workDir,
+      env: process.env,
+      shell: "/bin/zsh"
+    });
+    return {
+      name: checkName,
+      status: "passed",
+      command: skill.command,
+      detail: skill.detailOnPass,
+      durationMs: Date.now() - started
+    };
+  } catch (error) {
+    const execError = error;
+    const code = typeof execError.code === "number" ? execError.code : 1;
+    if (code === skill.successExitCode) {
+      return {
+        name: checkName,
+        status: "passed",
+        command: skill.command,
+        detail: skill.detailOnPass,
+        durationMs: Date.now() - started
+      };
+    }
+    const stderr = execError.stderr?.trim() || execError.stdout?.trim() || "\u547D\u4EE4\u6267\u884C\u5931\u8D25";
+    return {
+      name: checkName,
+      status: "failed",
+      command: skill.command,
+      detail: skill.detailOnFailTemplate.replace("{stderr}", stderr),
+      fixHint: skill.fixHintTemplate,
+      durationMs: Date.now() - started
+    };
+  }
+}
+
+// src/validation.ts
+import { access as access4, readFile as readFile7 } from "fs/promises";
+import { exec as exec2 } from "child_process";
+import { promisify as promisify2 } from "util";
+import path9 from "path";
+var execAsync2 = promisify2(exec2);
+async function fileExists4(filePath) {
+  try {
+    await access4(filePath);
     return true;
   } catch {
     return false;
@@ -1241,18 +1589,18 @@ function createSkippedCheck(index, criterion, detail) {
   };
 }
 async function runFileCheck(index, workDir, target) {
-  const filePath = path7.join(workDir, target);
-  const exists = await fileExists3(filePath);
+  const filePath = path9.join(workDir, target);
+  const exists2 = await fileExists4(filePath);
   return {
     name: `level2:file:${index}`,
-    status: exists ? "passed" : "failed",
+    status: exists2 ? "passed" : "failed",
     command: `file:${target}`,
-    detail: exists ? `\u6587\u4EF6\u5B58\u5728: ${target}` : `\u6587\u4EF6\u4E0D\u5B58\u5728: ${target}`
+    detail: exists2 ? `\u6587\u4EF6\u5B58\u5728: ${target}` : `\u6587\u4EF6\u4E0D\u5B58\u5728: ${target}`
   };
 }
 async function runContainsCheck(index, workDir, target, needle) {
-  const filePath = path7.join(workDir, target);
-  if (!await fileExists3(filePath)) {
+  const filePath = path9.join(workDir, target);
+  if (!await fileExists4(filePath)) {
     return {
       name: `level2:contains:${index}`,
       status: "failed",
@@ -1260,7 +1608,7 @@ async function runContainsCheck(index, workDir, target, needle) {
       detail: `\u6587\u4EF6\u4E0D\u5B58\u5728: ${target}`
     };
   }
-  const content = await readFile6(filePath, "utf8");
+  const content = await readFile7(filePath, "utf8");
   const matched = content.includes(needle);
   return {
     name: `level2:contains:${index}`,
@@ -1271,7 +1619,7 @@ async function runContainsCheck(index, workDir, target, needle) {
 }
 async function runCommandCheck(index, workDir, command) {
   try {
-    await execAsync(command, {
+    await execAsync2(command, {
       cwd: workDir,
       env: process.env,
       shell: "/bin/zsh"
@@ -1299,7 +1647,8 @@ async function runLevel2Validation(workDir, contract) {
     ];
   }
   const checks = await Promise.all(
-    contract.acceptanceCriteria.map(async (criterion, index) => {
+    contract.acceptanceCriteria.map(async (item, index) => {
+      const criterion = item.criterion;
       if (criterion.startsWith("file:")) {
         return runFileCheck(index, workDir, criterion.slice("file:".length).trim());
       }
@@ -1323,57 +1672,10 @@ async function runLevel2Validation(workDir, contract) {
 }
 
 // src/evidence.ts
-var execAsync2 = promisify2(exec2);
-async function fileExists4(filePath) {
-  try {
-    await access3(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function loadPackageScripts(workDir) {
-  const packageFile = path8.join(workDir, "package.json");
-  if (!await fileExists4(packageFile)) {
-    return {};
-  }
-  const pkg = JSON.parse(await readFile7(packageFile, "utf8"));
-  return pkg.scripts ?? {};
-}
-async function runNodeScriptCheck(workDir, checkName, scripts) {
-  if (!scripts[checkName]) {
-    return {
-      name: checkName,
-      status: "skipped",
-      command: `npm run ${checkName}`,
-      detail: "script \u672A\u5B9A\u4E49"
-    };
-  }
-  try {
-    await execAsync2(`npm run ${checkName}`, {
-      cwd: workDir,
-      env: process.env,
-      shell: "/bin/zsh"
-    });
-    return {
-      name: checkName,
-      status: "passed",
-      command: `npm run ${checkName}`,
-      detail: "script \u6267\u884C\u901A\u8FC7"
-    };
-  } catch (error) {
-    const execError = error;
-    return {
-      name: checkName,
-      status: "failed",
-      command: `npm run ${checkName}`,
-      detail: execError.stderr?.trim() || "script \u6267\u884C\u5931\u8D25"
-    };
-  }
-}
+var execAsync3 = promisify3(exec3);
 async function collectChangedFiles(workDir) {
   try {
-    const { stdout } = await execAsync2("git status --short", {
+    const { stdout } = await execAsync3("git status --short", {
       cwd: workDir,
       env: process.env,
       shell: "/bin/zsh"
@@ -1383,30 +1685,54 @@ async function collectChangedFiles(workDir) {
     return [];
   }
 }
+async function countCommand(workDir, command) {
+  try {
+    const { stdout } = await execAsync3(command, {
+      cwd: workDir,
+      env: process.env,
+      shell: "/bin/zsh"
+    });
+    return Number(stdout.trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
 async function collectEvidence(workDir, config, contract) {
-  const scripts = await loadPackageScripts(workDir);
-  const scriptChecks = await Promise.all(
-    config.requiredChecks.map((checkName) => runNodeScriptCheck(workDir, checkName, scripts))
+  const skillChecks = await Promise.all(
+    config.requiredChecks.map((checkName) => runSkillCheck(workDir, checkName, config.projectType))
   );
   const changedFiles = await collectChangedFiles(workDir);
   const scopeCheck = runScopeCheck(contract, changedFiles);
   const level2Checks = await runLevel2Validation(workDir, contract);
-  const checks = [...scriptChecks, scopeCheck, ...level2Checks];
+  const checks = [...skillChecks, scopeCheck, ...level2Checks];
   return {
     checks,
-    changedFiles
+    changedFiles,
+    lintWarningsTotal: 0,
+    todoCount: await countCommand(workDir, "git grep -n -E 'TODO|FIXME' -- ':!node_modules' ':!dist' | wc -l"),
+    gitDirtyFiles: changedFiles.length
   };
 }
 
 // src/evidence-baseline.ts
-import { mkdir as mkdir5, readFile as readFile8, writeFile as writeFile5 } from "fs/promises";
-import path9 from "path";
-import { evidenceBaselineSchema } from "@harnessly/shared";
+import { mkdir as mkdir6, readFile as readFile8, writeFile as writeFile5 } from "fs/promises";
+import path10 from "path";
+import {
+  baselineDiffSchema,
+  evidenceBaselineSchema,
+  evidenceSnapshotSchema
+} from "@harnessly/shared";
 var EVIDENCE_BASELINE_FILENAME = "evidence-baseline.json";
 function getEvidenceBaselinePath(workDir) {
-  return path9.join(getHarnessPaths(workDir).harnessDir, EVIDENCE_BASELINE_FILENAME);
+  return path10.join(getHarnessPaths(workDir).harnessDir, EVIDENCE_BASELINE_FILENAME);
 }
-function isMissingFileError5(error) {
+function getTaskEvidenceDir(taskDir) {
+  return path10.join(taskDir, "evidence");
+}
+function getTaskEvidencePath(taskDir, kind) {
+  return path10.join(getTaskEvidenceDir(taskDir), `${kind}.json`);
+}
+function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function buildEvidenceBaseline(evidence) {
@@ -1416,13 +1742,59 @@ function buildEvidenceBaseline(evidence) {
     failedCheckNames
   };
 }
+function buildEvidenceSnapshot(evidence) {
+  return {
+    capturedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    checks: evidence.checks,
+    lintWarningsTotal: evidence.lintWarningsTotal,
+    todoCount: evidence.todoCount,
+    gitDirtyFiles: evidence.gitDirtyFiles
+  };
+}
+function checkMap(snapshot) {
+  return new Map(snapshot.checks.map((check) => [check.name, check.status]));
+}
+function buildBaselineDiff(baseline, current) {
+  const baselineChecks = checkMap(baseline);
+  const currentChecks = checkMap(current);
+  const names = /* @__PURE__ */ new Set([...baselineChecks.keys(), ...currentChecks.keys()]);
+  const checks = {};
+  for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
+    const from = baselineChecks.get(name) ?? "missing";
+    const to = currentChecks.get(name) ?? "missing";
+    checks[name] = {
+      from,
+      to,
+      regression: from === "passed" && to === "failed"
+    };
+  }
+  return {
+    checks,
+    lintWarningsDelta: current.lintWarningsTotal - baseline.lintWarningsTotal,
+    todoDelta: current.todoCount - baseline.todoCount
+  };
+}
+async function saveEvidenceSnapshot(taskDir, kind, snapshot) {
+  const validated = evidenceSnapshotSchema.parse(snapshot);
+  const filePath = getTaskEvidencePath(taskDir, kind);
+  await mkdir6(path10.dirname(filePath), { recursive: true });
+  await writeFile5(filePath, `${JSON.stringify(validated, null, 2)}
+`, "utf8");
+}
+async function saveBaselineDiff(taskDir, diff) {
+  const validated = baselineDiffSchema.parse(diff);
+  const filePath = getTaskEvidencePath(taskDir, "baseline-diff");
+  await mkdir6(path10.dirname(filePath), { recursive: true });
+  await writeFile5(filePath, `${JSON.stringify(validated, null, 2)}
+`, "utf8");
+}
 async function loadEvidenceBaseline(workDir) {
   const filePath = getEvidenceBaselinePath(workDir);
   let text;
   try {
     text = await readFile8(filePath, "utf8");
   } catch (error) {
-    if (isMissingFileError5(error)) return null;
+    if (isMissingFileError6(error)) return null;
     throw error;
   }
   try {
@@ -1435,18 +1807,18 @@ async function loadEvidenceBaseline(workDir) {
 async function saveEvidenceBaseline(workDir, baseline) {
   const validated = evidenceBaselineSchema.parse(baseline);
   const filePath = getEvidenceBaselinePath(workDir);
-  await mkdir5(path9.dirname(filePath), { recursive: true });
+  await mkdir6(path10.dirname(filePath), { recursive: true });
   await writeFile5(filePath, `${JSON.stringify(validated, null, 2)}
 `, "utf8");
 }
 
 // src/execute.ts
-import { exec as exec3 } from "child_process";
-import { promisify as promisify3 } from "util";
-var execAsync3 = promisify3(exec3);
+import { exec as exec4 } from "child_process";
+import { promisify as promisify4 } from "util";
+var execAsync4 = promisify4(exec4);
 async function runShellCommand(command, input) {
   try {
-    const { stdout, stderr } = await execAsync3(command, {
+    const { stdout, stderr } = await execAsync4(command, {
       cwd: input.workDir,
       env: {
         ...process.env,
@@ -1547,7 +1919,7 @@ function evaluateCommitGate(evidence, adapterExitCode, options = {}) {
   if (evidence.changedFiles.length === 0) {
     warnings.push("\u672A\u68C0\u6D4B\u5230\u5DE5\u4F5C\u533A\u53D8\u66F4");
   }
-  const decision = failures.length > 0 ? "block" : warnings.length > 0 ? "warn" : "pass";
+  const decision = failures.length > 0 ? "fail" : warnings.length > 0 ? "needs_human_review" : "pass";
   return {
     passed: decision === "pass",
     decision,
@@ -1651,20 +2023,21 @@ function createLLMClientFromEnv(env = process.env) {
 
 // src/plan.ts
 function generatePlan(contract) {
+  const acceptance = contract.acceptanceCriteria.map((item) => item.criterion).join("\uFF1B");
   const lines = [
     "# Plan",
     "",
     `1. \u660E\u786E ${contract.goal} \u5BF9\u5E94\u7684\u4FEE\u6539\u8FB9\u754C\uFF1A${contract.scopeInclude.join("\u3001")}`,
     "2. \u5728\u6700\u5C0F\u6539\u52A8\u8303\u56F4\u5185\u5B8C\u6210\u5B9E\u73B0\u6216\u4FEE\u590D",
-    `3. \u6309\u9A8C\u6536\u6807\u51C6\u81EA\u68C0\uFF1A${contract.acceptanceCriteria.join("\uFF1B")}`,
+    `3. \u6309\u9A8C\u6536\u6807\u51C6\u81EA\u68C0\uFF1A${acceptance}`,
     ""
   ];
   return lines.join("\n");
 }
 
 // src/promote.ts
-import { mkdir as mkdir6, writeFile as writeFile6 } from "fs/promises";
-import path10 from "path";
+import { mkdir as mkdir7, writeFile as writeFile6 } from "fs/promises";
+import path11 from "path";
 import { serializeTemplateDraft } from "@harnessly/shared";
 function slugify(input) {
   return input.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "template";
@@ -1683,16 +2056,16 @@ function createTemplateDraft(name, contract, report, config) {
     requiredChecks: config.requiredChecks,
     scopeInclude: contract.scopeInclude,
     outOfScope: contract.outOfScope,
-    acceptanceCriteria: contract.acceptanceCriteria
+    acceptanceCriteria: contract.acceptanceCriteria.map((item) => item.criterion)
   };
 }
 function deriveTemplateName(goal) {
   return slugify(goal);
 }
 async function saveTemplateDraft(workDir, template) {
-  const templatesDir = path10.join(workDir, ".harness", "templates");
-  const filePath = path10.join(templatesDir, `${template.name}.yaml`);
-  await mkdir6(templatesDir, { recursive: true });
+  const templatesDir = path11.join(workDir, ".harness", "templates");
+  const filePath = path11.join(templatesDir, `${template.name}.yaml`);
+  await mkdir7(templatesDir, { recursive: true });
   await writeFile6(filePath, serializeTemplateDraft(template), "utf8");
   return filePath;
 }
@@ -1748,7 +2121,7 @@ function renderContract(ctx) {
     `- template: ${ctx.contract.templateName}`,
     `- risk: ${ctx.contract.riskLevel}`,
     `- scope_include: ${ctx.contract.scopeInclude.join("\u3001") || "(\u7A7A)"}`,
-    `- acceptance: ${ctx.contract.acceptanceCriteria.join("\uFF1B") || "(\u7A7A)"}`
+    `- acceptance: ${ctx.contract.acceptanceCriteria.map((item) => item.criterion).join("\uFF1B") || "(\u7A7A)"}`
   ].join("\n");
 }
 function renderPlan(ctx) {
@@ -1830,7 +2203,7 @@ function buildSummary(commitGate) {
   if (commitGate.decision === "pass") {
     return `\u6267\u884C\u4E0E\u6700\u5C0F\u9A8C\u8BC1\u901A\u8FC7${preExistingHint}`;
   }
-  if (commitGate.decision === "warn") {
+  if (commitGate.decision === "needs_human_review") {
     const reasons2 = commitGate.warnings.length > 0 ? commitGate.warnings.join("\uFF1B") : "\u672A\u5217\u660E\u544A\u8B66";
     return `commit_gate \u8F6F\u6027\u544A\u8B66\uFF1A${reasons2}${preExistingHint}\uFF08\u9700 PM \u786E\u8BA4\uFF09`;
   }
@@ -1838,16 +2211,72 @@ function buildSummary(commitGate) {
   return `commit_gate \u786C\u6027\u5931\u8D25\uFF1A${reasons}${preExistingHint}`;
 }
 function createTaskReport(ctx, adapter, evidence, commitGate) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
   return validateTaskReport({
     taskId: ctx.taskId,
     goal: ctx.goal,
+    finalStage: "commit_gate",
+    commitDecision: commitGate.decision,
+    artifacts: {
+      requirement: `${ctx.taskDir}/requirement.md`,
+      contract: `${ctx.taskDir}/contract.yaml`,
+      design: `${ctx.taskDir}/design.md`,
+      taskBreakdown: `${ctx.taskDir}/task-breakdown.md`,
+      implementationNotes: `${ctx.taskDir}/implementation-notes.md`,
+      review: `${ctx.taskDir}/review.md`,
+      residentReview: `${ctx.taskDir}/resident-review.md`,
+      testReport: `${ctx.taskDir}/test-report.md`,
+      baselineEvidence: `${ctx.taskDir}/evidence/baseline.json`,
+      currentEvidence: `${ctx.taskDir}/evidence/current.json`,
+      baselineDiff: `${ctx.taskDir}/evidence/baseline-diff.json`,
+      commitSummary: `${ctx.taskDir}/commit-summary.md`
+    },
+    metrics: {
+      llmCalls: 0,
+      durationSeconds: Math.max(0, Math.floor((Date.parse(now) - Date.parse(ctx.state.createdAt)) / 1e3)),
+      retries: ctx.state.retryCount
+    },
+    createdAt: ctx.state.createdAt,
+    finishedAt: now,
     adapter,
     evidence,
     commitGate,
     commitReady: commitGate.decision === "pass",
     summary: buildSummary(commitGate),
-    generatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    generatedAt: now
   });
+}
+
+// src/resident-review.ts
+import { readFile as readFile9 } from "fs/promises";
+function isMissingFileError7(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+async function loadReviewAgentsConfig(workDir) {
+  try {
+    return await readFile9(getHarnessPaths(workDir).reviewAgentsFile, "utf8");
+  } catch (error) {
+    if (isMissingFileError7(error)) return null;
+    throw error;
+  }
+}
+async function renderResidentReview(workDir, findings) {
+  const configText = await loadReviewAgentsConfig(workDir);
+  const active = Boolean(configText?.includes("review_agents:"));
+  const failed = findings.filter((finding) => finding.status === "failed");
+  return [
+    "# Resident Review",
+    "",
+    "## Config",
+    active ? "- .harness/review-agents.yaml: loaded" : "- .harness/review-agents.yaml: missing",
+    "",
+    "## Decision",
+    failed.length > 0 ? "fail" : "pass",
+    "",
+    "## Findings",
+    failed.length === 0 ? "- none" : failed.map((finding) => `- ${finding.name}: ${finding.detail}`).join("\n"),
+    ""
+  ].join("\n");
 }
 
 // src/review.ts
@@ -1910,17 +2339,272 @@ function runReviewStage(changedFiles) {
   return findings;
 }
 
+// src/structure-check.ts
+import { readFile as readFile10 } from "fs/promises";
+import path12 from "path";
+function isMissingFileError8(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+function parseStructureRules(text) {
+  const max = text.match(/^\s*max:\s*(\d+)\s*$/m)?.[1];
+  const excludes = [];
+  let inExclude = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*exclude:\s*$/.test(line)) {
+      inExclude = true;
+      continue;
+    }
+    if (inExclude && /^\S/.test(line)) {
+      inExclude = false;
+    }
+    const item = inExclude ? line.match(/^\s*-\s+(.+)$/)?.[1]?.trim() : null;
+    if (item) excludes.push(item);
+  }
+  return {
+    fileLengthMax: max ? Number(max) : void 0,
+    fileLengthExclude: excludes
+  };
+}
+function matchesPrefix(filePath, pattern) {
+  if (pattern.endsWith("/")) return filePath.startsWith(pattern);
+  if (pattern.includes("*")) {
+    const re = new RegExp(pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*"));
+    return re.test(filePath);
+  }
+  return filePath === pattern || filePath.startsWith(pattern);
+}
+async function runStructureCheck(workDir, changedFiles) {
+  const rulesPath = path12.join(getHarnessPaths(workDir).harnessDir, "structure-rules.yaml");
+  let text;
+  try {
+    text = await readFile10(rulesPath, "utf8");
+  } catch (error) {
+    if (isMissingFileError8(error)) {
+      return [
+        {
+          name: "structure.rules",
+          status: "skipped",
+          command: "structure-check",
+          detail: ".harness/structure-rules.yaml \u672A\u914D\u7F6E",
+          fixHint: "\u8FD0\u884C harnessly init \u6216\u521B\u5EFA structure-rules.yaml"
+        }
+      ];
+    }
+    throw error;
+  }
+  const rules = parseStructureRules(text);
+  const results = [];
+  if (rules.fileLengthMax === void 0) {
+    results.push({
+      name: "structure.file_length",
+      status: "skipped",
+      command: "structure-check:file_length",
+      detail: "file_length.max \u672A\u914D\u7F6E"
+    });
+  } else {
+    const violations = [];
+    for (const file of changedFiles) {
+      if (rules.fileLengthExclude.some((pattern) => matchesPrefix(file, pattern))) continue;
+      try {
+        const content = await readFile10(path12.join(workDir, file), "utf8");
+        const lines = content.split(/\r?\n/).length;
+        if (lines > rules.fileLengthMax) {
+          violations.push(`${file}=${lines}`);
+        }
+      } catch {
+      }
+    }
+    results.push({
+      name: "structure.file_length",
+      status: violations.length > 0 ? "failed" : "passed",
+      command: "structure-check:file_length",
+      detail: violations.length > 0 ? `\u6587\u4EF6\u957F\u5EA6\u8D85\u8FC7 max=${rules.fileLengthMax}: ${violations.join(", ")}` : `\u53D8\u66F4\u6587\u4EF6\u5747\u672A\u8D85\u8FC7 max=${rules.fileLengthMax}`,
+      fixHint: violations.length > 0 ? "\u62C6\u5206\u6587\u4EF6\u6216\u66F4\u65B0 structure-rules.yaml \u7684 exclude" : void 0
+    });
+  }
+  results.push({
+    name: "structure.unique_implementations",
+    status: "skipped",
+    command: "structure-check:unique_implementations",
+    detail: "unique_implementations \u5C1A\u672A\u914D\u7F6E\u5177\u4F53\u89C4\u5219"
+  });
+  results.push({
+    name: "structure.package_dependencies",
+    status: "skipped",
+    command: "structure-check:package_dependencies",
+    detail: "package_dependencies.forbid \u5C1A\u672A\u914D\u7F6E\u5177\u4F53\u89C4\u5219"
+  });
+  return results;
+}
+
 // src/workflow.ts
+import { validateDesignMarkdown, validateRequirementMarkdown } from "@harnessly/shared";
 function markCompleted(ctx, stage) {
   if (!ctx.state.completedStages.includes(stage)) {
     ctx.state.completedStages = [...ctx.state.completedStages, stage];
   }
+}
+function renderList(items, fallback) {
+  return (items.length > 0 ? items : [fallback]).map((item) => `- ${item}`);
+}
+function renderRequirementMarkdown(contract) {
+  return [
+    "# Requirement",
+    "",
+    "## Goal",
+    contract.goal,
+    "",
+    "## In Scope",
+    ...renderList(contract.scopeInclude, contract.goal),
+    "",
+    "## Out of Scope",
+    ...renderList(contract.outOfScope, "\u4E0E\u76EE\u6807\u65E0\u5173\u7684\u91CD\u6784"),
+    "",
+    "## Affected Modules",
+    ...renderList(contract.scopeInclude, "\u5F85\u5B9E\u73B0\u9636\u6BB5\u786E\u8BA4"),
+    "",
+    "## Acceptance Criteria",
+    ...renderList(
+      contract.acceptanceCriteria.map((item) => item.criterion),
+      "\u9A8C\u6536\u6807\u51C6\u5DF2\u5728 contract.yaml \u4E2D\u7ED3\u6784\u5316\u8BB0\u5F55"
+    ),
+    "",
+    "## Risks",
+    ...renderList([`risk_level=${contract.riskLevel}`], "\u65E0"),
+    "",
+    "## Open Questions",
+    "- \u65E0",
+    ""
+  ].join("\n");
+}
+function renderDesignMarkdown(contract) {
+  return [
+    "# Design",
+    "",
+    "## Decision",
+    "- \u65B9\u6848 A\uFF1A\u5728\u73B0\u6709\u5DE5\u4F5C\u6D41\u4E2D\u8865\u9F50\u7F3A\u5931\u5DE5\u4EF6\u548C\u6821\u9A8C\uFF0C\u4FDD\u6301\u5F53\u524D CLI \u4E0E host \u5165\u53E3\u3002",
+    "- \u65B9\u6848 B\uFF1A\u91CD\u5199\u5DE5\u4F5C\u6D41\u5F15\u64CE\u5E76\u66FF\u6362\u73B0\u6709\u4EFB\u52A1\u72B6\u6001\u6A21\u578B\u3002",
+    "- \u91C7\u7528\u65B9\u6848 A\uFF1A\u5F71\u54CD\u8303\u56F4\u8F83\u5C0F\uFF0C\u80FD\u4FDD\u6301\u73B0\u6709\u5165\u53E3\u517C\u5BB9\u3002",
+    "",
+    "## Interfaces",
+    "- Contract \u4F7F\u7528 version/task_id/scope/acceptance_criteria \u7B49 v3-core \u5B57\u6BB5\u3002",
+    "- TaskState \u4F7F\u7528 current_owner \u4E0E active/blocked/completed/aborted \u72B6\u6001\u3002",
+    "- Workflow \u9636\u6BB5\u4EA7\u51FA requirement.md\u3001design.md\u3001task-breakdown.md\u3001implementation-notes.md\u3001review.md\u3001test-report.md\u3002",
+    "",
+    "## Impact",
+    ...renderList(contract.scopeInclude, "packages/core/src/workflow.ts"),
+    "",
+    "## Feasibility Self-Check",
+    "- scope \u662F\u5426\u6E05\u6670\uFF1A\u662F\uFF0C\u6765\u81EA contract.yaml \u7684 scope.include \u4E0E scope.exclude\u3002",
+    "- design \u662F\u5426\u5B8C\u6574\uFF1A\u662F\uFF0C\u5305\u542B\u51B3\u7B56\u3001\u63A5\u53E3\u3001\u5F71\u54CD\u8303\u56F4\u3002",
+    "- task-breakdown \u662F\u5426\u5408\u7406\uFF1A\u662F\uFF0C\u62C6\u6210\u53EF\u9A8C\u8BC1\u7684\u9636\u6BB5\u4EA7\u7269\u3002",
+    "- \u98CE\u9669\u662F\u5426\u53EF\u63A7\uFF1A\u662F\uFF0C\u4FDD\u6301\u517C\u5BB9\u5B57\u6BB5\u5E76\u7528\u6D4B\u8BD5\u9A8C\u8BC1\u3002",
+    "- \u662F\u5426\u4E0E\u73B0\u6709\u67B6\u6784\u51B2\u7A81\uFF1A\u5426\uFF0C\u7EE7\u7EED\u4F7F\u7528 repo-local .harness \u4E8B\u5B9E\u6E90\u3002",
+    ""
+  ].join("\n");
+}
+function renderTaskBreakdown(contract) {
+  return [
+    "# Task Breakdown",
+    "",
+    "1. [ ] SPEC \u5DE5\u4EF6",
+    "   - deps: []",
+    "   - acceptance: requirement.md \u4E0E contract.yaml \u5B58\u5728\u5E76\u901A\u8FC7\u6821\u9A8C",
+    "2. [ ] DESIGN \u5DE5\u4EF6",
+    "   - deps: [1]",
+    "   - acceptance: design.md \u4E0E task-breakdown.md \u5B58\u5728\u5E76\u901A\u8FC7\u6821\u9A8C",
+    "3. [ ] EXECUTE \u5DE5\u4EF6",
+    "   - deps: [2]",
+    "   - acceptance: implementation-notes.md \u8BB0\u5F55\u6267\u884C\u987A\u5E8F\u4E0E\u504F\u79BB",
+    "4. [ ] REVIEW/TEST \u5DE5\u4EF6",
+    "   - deps: [3]",
+    "   - acceptance: review.md\u3001test-report.md\u3001report.json \u53EF\u4F9B gate \u4F7F\u7528",
+    "",
+    `> goal: ${contract.goal}`,
+    ""
+  ].join("\n");
+}
+function renderImplementationNotes(adapterResult) {
+  return [
+    "# Implementation Notes",
+    "",
+    "## Order",
+    "- \u6267\u884C adapter \u6216\u5BBF\u4E3B\u4E3B agent \u4EA7\u51FA\u7684\u4EE3\u7801\u53D8\u66F4",
+    "",
+    "## Deviations from Design",
+    "- \u65E0",
+    "",
+    "## Pitfalls",
+    adapterResult.exitCode === 0 ? "- \u65E0" : `- adapter exit code = ${adapterResult.exitCode}`,
+    "",
+    "## TODOs Introduced",
+    "- \u65E0",
+    "",
+    "## Sub-task Progress",
+    "- [x] SPEC \u5DE5\u4EF6",
+    "- [x] DESIGN \u5DE5\u4EF6",
+    "- [x] EXECUTE \u5DE5\u4EF6",
+    "- [ ] REVIEW/TEST \u5DE5\u4EF6",
+    ""
+  ].join("\n");
+}
+function renderReviewMarkdown(taskId, findings) {
+  const failed = findings.filter((finding) => finding.status === "failed");
+  const decision = failed.length > 0 ? "block_execute" : "pass";
+  const lines = [
+    "# Review",
+    "",
+    "## Decision",
+    decision,
+    "",
+    "## Block Scope",
+    decision === "pass" ? "minimal" : "minimal",
+    "",
+    "## Findings"
+  ];
+  if (failed.length === 0) {
+    lines.push("- none");
+  } else {
+    failed.forEach((finding, index) => {
+      lines.push(
+        `- id: F-${taskId}-${index + 1}`,
+        "  severity: P1",
+        `  description: ${finding.detail}`,
+        `  file: ${finding.name}`,
+        "  line: N/A",
+        `  fix_hint: ${finding.command}`,
+        "  recurrent_pattern: false"
+      );
+    });
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function renderTestReport(contract, evidence) {
+  return [
+    "# Test Report",
+    "",
+    "## Acceptance Coverage",
+    ...contract.acceptanceCriteria.map(
+      (item) => `- ${item.criterion}: ${item.verifiableBy} / ${item.testHint ?? "\u65E0 test_hint"}`
+    ),
+    "",
+    "## Baseline-Diff",
+    "- baseline-diff: evidence/baseline-diff.json",
+    `- lint_warnings_total: ${evidence.lintWarningsTotal}`,
+    `- todo_count: ${evidence.todoCount}`,
+    "",
+    "## Externally-Run Validations",
+    "- \u65E0",
+    ""
+  ].join("\n");
 }
 var WorkflowEngine = class {
   constructor(manager) {
     this.manager = manager;
   }
   manager;
+  baselineSnapshot = null;
   async run(ctx, options) {
     const startFrom = options.resumeFrom ?? "spec";
     if (startFrom === "spec") {
@@ -1949,11 +2633,13 @@ var WorkflowEngine = class {
    * spec_gate：contract 合规性校验，失败即在 spec 阶段标记失败。
    */
   async executeSpecStage(ctx) {
-    ctx.state.status = "contracting";
+    ctx.state.status = "active";
     ctx.state.currentStage = "spec";
+    ctx.state.currentOwner = "requirement";
     await this.manager.saveState(ctx);
     const templateName = matchTemplate(ctx.goal);
     const contract = await generateContract({
+      taskId: ctx.taskId,
       goal: ctx.goal,
       templateName,
       llmClient: createLLMClientFromEnv()
@@ -1968,6 +2654,13 @@ var WorkflowEngine = class {
       throw new Error(`spec gate \u5931\u8D25: ${contractGate.failures.join("; ")}`);
     }
     await this.manager.saveContract(ctx, contract);
+    const requirement = renderRequirementMarkdown(contract);
+    const requirementFailures = validateRequirementMarkdown(requirement);
+    if (requirementFailures.length > 0) {
+      await this.manager.markFailure(ctx, "spec", requirementFailures.join("; "));
+      throw new Error(`requirement gate \u5931\u8D25: ${requirementFailures.join("; ")}`);
+    }
+    await this.manager.saveRequirement(ctx, requirement);
     markCompleted(ctx, "spec");
     await this.manager.saveState(ctx);
   }
@@ -1982,8 +2675,17 @@ var WorkflowEngine = class {
       throw new Error("design \u9636\u6BB5\u7F3A\u5C11 contract");
     }
     ctx.state.currentStage = "design";
+    ctx.state.currentOwner = "designer";
     await this.manager.saveState(ctx);
     const plan = generatePlan(ctx.contract);
+    const design = renderDesignMarkdown(ctx.contract);
+    const designFailures = validateDesignMarkdown(design);
+    if (designFailures.length > 0) {
+      await this.manager.markFailure(ctx, "design", designFailures.join("; "));
+      throw new Error(`design gate \u5931\u8D25: ${designFailures.join("; ")}`);
+    }
+    await this.manager.saveDesign(ctx, design);
+    await this.manager.saveTaskBreakdown(ctx, renderTaskBreakdown(ctx.contract));
     await this.manager.savePlan(ctx, plan);
     markCompleted(ctx, "design");
     await this.manager.saveState(ctx);
@@ -1993,8 +2695,9 @@ var WorkflowEngine = class {
    * 调用 adapter（headless 模式下走子进程；宿主主路径下由主 agent 直接执行）。
    */
   async executeExecuteStage(ctx, options) {
-    ctx.state.status = "executing";
+    ctx.state.status = "active";
     ctx.state.currentStage = "execute";
+    ctx.state.currentOwner = "developer";
     await this.manager.saveState(ctx);
     try {
       const allEntries = await loadFeedbackPool(ctx.workDir);
@@ -2008,6 +2711,9 @@ var WorkflowEngine = class {
     const promptFile = await this.manager.savePrompt(ctx, prompt);
     const adapter = createAdapter(options.adapterKind);
     try {
+      const baselineEvidence = await collectEvidence(ctx.workDir, ctx.config, ctx.contract);
+      this.baselineSnapshot = buildEvidenceSnapshot(baselineEvidence);
+      await saveEvidenceSnapshot(ctx.taskDir, "baseline", this.baselineSnapshot);
       const adapterResult = await adapter.execute({
         taskId: ctx.taskId,
         workDir: ctx.workDir,
@@ -2015,6 +2721,15 @@ var WorkflowEngine = class {
         promptFile,
         command: options.adapterCommand
       });
+      const changedFiles = await collectChangedFiles(ctx.workDir);
+      const structureChecks = await runStructureCheck(ctx.workDir, changedFiles);
+      const structureFailures = structureChecks.filter((check) => check.status === "failed");
+      if (structureFailures.length > 0) {
+        const detail = structureFailures.map((check) => `${check.name}: ${check.detail}`).join("; ");
+        await this.manager.markFailure(ctx, "execute", detail);
+        throw new Error(`structure-check \u5931\u8D25: ${detail}`);
+      }
+      await this.manager.saveImplementationNotes(ctx, renderImplementationNotes(adapterResult));
       markCompleted(ctx, "execute");
       return adapterResult;
     } catch (error) {
@@ -2030,9 +2745,12 @@ var WorkflowEngine = class {
    */
   async executeReviewStage(ctx) {
     ctx.state.currentStage = "review";
+    ctx.state.currentOwner = "reviewer";
     await this.manager.saveState(ctx);
     const changedFiles = await collectChangedFiles(ctx.workDir);
     const findings = runReviewStage(changedFiles);
+    await this.manager.saveReviewMarkdown(ctx, renderReviewMarkdown(ctx.taskId, findings));
+    await this.manager.saveResidentReview(ctx, await renderResidentReview(ctx.workDir, findings));
     markCompleted(ctx, "review");
     await this.manager.saveState(ctx);
     return findings;
@@ -2043,11 +2761,21 @@ var WorkflowEngine = class {
    * 并把 review 阶段的发现合入 evidence.checks 一起进 commit_gate。
    */
   async executeTestStage(ctx, reviewFindings) {
-    ctx.state.status = "verifying";
+    ctx.state.status = "active";
     ctx.state.currentStage = "test";
+    ctx.state.currentOwner = "tester";
     await this.manager.saveState(ctx);
     const evidence = await collectEvidence(ctx.workDir, ctx.config, ctx.contract);
     evidence.checks = [...reviewFindings, ...evidence.checks];
+    const currentSnapshot = buildEvidenceSnapshot(evidence);
+    await saveEvidenceSnapshot(ctx.taskDir, "current", currentSnapshot);
+    if (this.baselineSnapshot) {
+      await saveBaselineDiff(ctx.taskDir, buildBaselineDiff(this.baselineSnapshot, currentSnapshot));
+    }
+    if (ctx.contract) {
+      await this.manager.saveTestReport(ctx, renderTestReport(ctx.contract, evidence));
+    }
+    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir)];
     markCompleted(ctx, "test");
     await this.manager.saveState(ctx);
     return evidence;
@@ -2063,6 +2791,7 @@ var WorkflowEngine = class {
    */
   async executeCommitGateStage(ctx, adapterResult, evidence) {
     ctx.state.currentStage = "commit_gate";
+    ctx.state.currentOwner = "pm";
     await this.manager.saveState(ctx);
     const baseline = await loadEvidenceBaseline(ctx.workDir);
     const commitGate = evaluateCommitGate(evidence, adapterResult.exitCode, { baseline });
@@ -2084,7 +2813,7 @@ var WorkflowEngine = class {
         failedChecks.length > 0 ? `failed_checks: ${failedChecks.join(" | ")}` : "failed_checks: none",
         commitGate.warnings.length > 0 ? `warnings: ${commitGate.warnings.join(" | ")}` : "warnings: none"
       ].join("\n");
-      const failureStage = commitGate.decision === "block" ? "test" : "commit_gate";
+      const failureStage = commitGate.decision === "fail" ? "test" : "commit_gate";
       await this.manager.markFailure(ctx, failureStage, feedback);
     }
     return report;
@@ -2116,7 +2845,9 @@ export {
   appendFeedbackEntry,
   archiveTaskArtifacts,
   assemblePrompt,
+  buildBaselineDiff,
   buildEvidenceBaseline,
+  buildEvidenceSnapshot,
   buildFeedbackEntry,
   checkContract,
   collectChangedFiles,
@@ -2142,28 +2873,44 @@ export {
   getDefaultAgentManifest,
   getDefaultRequiredChecks,
   getEvidenceBaselinePath,
+  getFeedbackHistoryPath,
   getFeedbackPoolPath,
   getHarnessPaths,
   getRoleForStage,
+  getSkillPath,
+  getTaskEvidenceDir,
+  getTaskEvidencePath,
   listAgentFiles,
   loadAgentManifest,
   loadAgentManifests,
   loadEvidenceBaseline,
   loadFeedbackPool,
   loadHarnessConfig,
+  loadSkill,
   matchTemplate,
   parseHarnessConfig,
   pickRecentEntries,
   pickRecommendedAgent,
+  promoteFeedbackEntry,
   renderFeedbackEntriesAsLines,
   renderGlobalRulesTemplate,
+  renderResidentReview,
+  renderReviewAgentsTemplate,
+  renderSkillTemplate,
+  renderStructureRulesTemplate,
+  runArtifactGuard,
   runLevel2Validation,
   runReviewStage,
   runScopeCheck,
+  runSkillCheck,
+  runStructureCheck,
+  saveBaselineDiff,
   saveEvidenceBaseline,
+  saveEvidenceSnapshot,
   saveTemplateDraft,
   serializeHarnessConfig,
   writeDefaultAgentManifests,
+  writeDefaultSkillManifests,
   writeFileIfChanged,
   writeHarnessConfig
 };

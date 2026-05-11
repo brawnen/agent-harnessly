@@ -5,6 +5,9 @@ import {
   detectProjectType,
   ensureHarnessDirectories,
   renderGlobalRulesTemplate,
+  renderReviewAgentsTemplate,
+  renderStructureRulesTemplate,
+  writeDefaultSkillManifests,
   writeDefaultAgentManifests,
   writeFileIfChanged,
   writeHarnessConfig,
@@ -34,6 +37,26 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     renderGlobalRulesTemplate(),
     force,
   );
+  const structureRulesStatus = await writeFileIfChanged(
+    paths.structureRulesFile,
+    renderStructureRulesTemplate(),
+    force,
+  );
+  const reviewAgentsStatus = await writeFileIfChanged(
+    paths.reviewAgentsFile,
+    renderReviewAgentsTemplate(),
+    force,
+  );
+  const skillResults = await writeDefaultSkillManifests(
+    workDir,
+    projectType,
+    config.requiredChecks,
+    force,
+  );
+  const skillSummary =
+    skillResults.length > 0
+      ? skillResults.map((r) => `${r.check}/${r.language}=${r.status}`).join(', ')
+      : 'none';
 
   // 写入 5 角色 sub-agent 默认 manifest（v3-core SPEC §4）
   const agentResults = await writeDefaultAgentManifests(workDir, force);
@@ -55,6 +78,9 @@ export async function runInit(flags: Record<string, string | boolean>): Promise<
     `- project_type: ${projectType}`,
     `- config: ${configStatus}`,
     `- global_rules: ${globalRulesStatus}`,
+    `- structure_rules: ${structureRulesStatus}`,
+    `- review_agents: ${reviewAgentsStatus}`,
+    `- skills: ${skillSummary}`,
     `- agents: ${agentSummary}`,
     `- hosts: ${hosts.join(', ')}`,
     `- default_host: ${config.defaultHost}`,

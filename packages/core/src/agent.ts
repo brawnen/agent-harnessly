@@ -48,9 +48,10 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     description: '在 SPEC 阶段帮 PM 澄清需求、列举可验收点',
     stage: 'spec',
     enabled: true,
+    planModeEnabled: false,
     models: {
       'claude-code': 'haiku',
-      codex: 'gpt-5.4-mini',
+      codex: 'gpt-5.5',
       'gemini-cli': 'gemini-flash',
     },
     toolWhitelist: ['Read', 'Bash'],
@@ -78,9 +79,10 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     description: '在 DESIGN 阶段基于 contract 列实施步骤、依赖与风险',
     stage: 'design',
     enabled: true,
+    planModeEnabled: false,
     models: {
       'claude-code': 'sonnet',
-      codex: 'gpt-5.4',
+      codex: 'gpt-5.5',
       'gemini-cli': 'gemini-pro',
     },
     toolWhitelist: ['Read', 'Bash', 'Glob', 'Grep'],
@@ -108,9 +110,11 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     description: '在 EXECUTE 阶段按 plan 执行（headless 适配；主路径下由主 agent 担任）',
     stage: 'execute',
     enabled: false,
+    planModeEnabled: false,
     models: {
-      'claude-code': 'sonnet',
-      codex: 'gpt-5.4',
+      // EXECUTE 阶段是最重的活：用各 host 当前主力模型
+      'claude-code': 'opus',
+      codex: 'gpt-5.5',
       'gemini-cli': 'gemini-pro',
     },
     toolWhitelist: ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep'],
@@ -139,9 +143,10 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     description: '在 REVIEW 阶段对改动做语义层审查（scope、敏感文件、副作用）',
     stage: 'review',
     enabled: true,
+    planModeEnabled: false,
     models: {
       'claude-code': 'sonnet',
-      codex: 'gpt-5.4',
+      codex: 'gpt-5.5',
       'gemini-cli': 'gemini-pro',
     },
     toolWhitelist: ['Read', 'Bash', 'Glob', 'Grep'],
@@ -169,9 +174,10 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     description: '在 TEST 阶段跑 required checks 与 acceptance 校验',
     stage: 'test',
     enabled: true,
+    planModeEnabled: false,
     models: {
       'claude-code': 'sonnet',
-      codex: 'gpt-5.4',
+      codex: 'gpt-5.5',
       'gemini-cli': 'gemini-pro',
     },
     toolWhitelist: ['Read', 'Bash'],
@@ -354,21 +360,22 @@ export function getRoleForStage(stage: StageMarker): AgentRole | null {
 /**
  * 按路由意图 + 当前 stage + 启用角色集合，挑出推荐的 sub-agent 名字。
  *
- * 规则：
- * - new_task         : 启用了 requirement 用 'harness-requirement'，否则用复合别名 'harness-planner'
- * - resume_task      : stage 对应角色已启用就用 'harness-<role>'；execute 阶段返回 null（主 agent）；其他情况返回 null
- * - completion_review: stage 对应角色已启用就用 'harness-<role>'；否则用复合别名 'harness-evaluator'
+ * 规则（v3-core only，无 v2 复合别名兜底）：
+ * - new_task         : 启用了 requirement 用 'harness-requirement'，否则返回 null
+ * - resume_task      : stage 对应角色已启用就用 'harness-<role>'；execute 阶段或角色未启用返回 null
+ * - completion_review: stage 对应角色已启用就用 'harness-<role>'；否则用任一启用的回退（reviewer > tester > 其他）
  *
- * 'harness-planner' / 'harness-evaluator' 是 v2 复合别名，host install 始终生成；
- * 'harness-<role>' 仅在用户启用了对应 manifest 时存在。
+ * 返回 null 表示：当前没有合适的 sub-agent，调用方应提醒用户检查 .harness/agents/ manifest。
  */
+const COMPLETION_FALLBACK_ROLES: readonly AgentRole[] = ['reviewer', 'tester', 'designer', 'requirement'];
+
 export function pickRecommendedAgent(
   intent: AgentRoutingIntent,
   stage: StageMarker | null,
   enabledRoles: ReadonlySet<AgentRole>,
 ): string | null {
   if (intent === 'new_task') {
-    return enabledRoles.has('requirement') ? 'harness-requirement' : 'harness-planner';
+    return enabledRoles.has('requirement') ? 'harness-requirement' : null;
   }
 
   if (intent === 'resume_task') {
@@ -397,7 +404,14 @@ export function pickRecommendedAgent(
     }
   }
 
-  return 'harness-evaluator';
+  // 未命中精确角色：按优先级取一个启用的回退角色（reviewer 优先，因为它视角最像 evaluator）
+  for (const candidate of COMPLETION_FALLBACK_ROLES) {
+    if (enabledRoles.has(candidate)) {
+      return `harness-${candidate}`;
+    }
+  }
+
+  return null;
 }
 
 /**

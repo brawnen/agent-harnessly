@@ -21,6 +21,10 @@ export function getFeedbackPoolPath(workDir: string): string {
   return path.join(getHarnessPaths(workDir).harnessDir, FEEDBACK_POOL_FILENAME);
 }
 
+export function getFeedbackHistoryPath(workDir: string): string {
+  return path.join(getHarnessPaths(workDir).harnessDir, 'feedback-history.md');
+}
+
 function isMissingFileError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -187,4 +191,35 @@ export function renderFeedbackEntriesAsLines(entries: readonly FeedbackEntry[]):
     }
     return parts.join(' ');
   });
+}
+
+export async function promoteFeedbackEntry(
+  workDir: string,
+  taskId: string,
+  reason = 'manual promotion',
+): Promise<FeedbackEntry> {
+  const entries = await loadFeedbackPool(workDir);
+  const entry = [...entries].reverse().find((item) => item.taskId === taskId);
+  if (!entry) {
+    throw new Error(`feedback entry not found for task ${taskId}`);
+  }
+
+  const historyPath = getFeedbackHistoryPath(workDir);
+  await mkdir(path.dirname(historyPath), { recursive: true });
+  await appendFile(
+    historyPath,
+    [
+      `## ${new Date().toISOString()} ${entry.taskId}`,
+      '',
+      `- goal: ${entry.goal}`,
+      `- decision: ${entry.decision}`,
+      `- template: ${entry.template ?? 'general'}`,
+      `- risk_level: ${entry.riskLevel ?? 'unknown'}`,
+      `- reason: ${reason}`,
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  return entry;
 }

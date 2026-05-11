@@ -36,9 +36,10 @@ describe('AgentManifest YAML codec (shared)', () => {
       description: '审查改动',
       stage: 'review',
       enabled: true,
+      planModeEnabled: false,
       models: {
         'claude-code': 'sonnet',
-        codex: 'gpt-5.4',
+        codex: 'gpt-5.5',
       },
       toolWhitelist: ['Read', 'Bash', 'Glob'],
       prompt: '## Reviewer\n你是 reviewer\n',
@@ -65,6 +66,7 @@ describe('AgentManifest YAML codec (shared)', () => {
       description: 'd',
       stage: 'spec',
       enabled: true,
+      planModeEnabled: false,
       models: { 'claude-code': 'haiku' },
       toolWhitelist: ['Read'],
       prompt: '',
@@ -278,9 +280,9 @@ describe('pickRecommendedAgent', () => {
       expect(pickRecommendedAgent('new_task', null, allEnabled)).toBe('harness-requirement');
     });
 
-    it('falls back to harness-planner composite alias when requirement is disabled', () => {
+    it('returns null when requirement is disabled (no v2 composite alias)', () => {
       const enabled = new Set<import('@harnessly/shared').AgentRole>(['designer', 'reviewer']);
-      expect(pickRecommendedAgent('new_task', null, enabled)).toBe('harness-planner');
+      expect(pickRecommendedAgent('new_task', null, enabled)).toBeNull();
     });
   });
 
@@ -332,26 +334,27 @@ describe('pickRecommendedAgent', () => {
       expect(pickRecommendedAgent('completion_review', 'test', allEnabled)).toBe('harness-tester');
     });
 
-    it('falls back to harness-evaluator when stage has no dedicated role', () => {
+    it('falls back to a v3-core 5 角色 (reviewer first) when stage has no dedicated role', () => {
       expect(pickRecommendedAgent('completion_review', 'commit_gate', allEnabled)).toBe(
-        'harness-evaluator',
+        'harness-reviewer',
       );
       expect(pickRecommendedAgent('completion_review', 'execute', allEnabled)).toBe(
-        'harness-evaluator',
+        'harness-reviewer',
       );
     });
 
-    it('falls back to harness-evaluator when stage is null', () => {
-      expect(pickRecommendedAgent('completion_review', null, allEnabled)).toBe(
-        'harness-evaluator',
-      );
+    it('falls back to reviewer when stage is null and reviewer enabled', () => {
+      expect(pickRecommendedAgent('completion_review', null, allEnabled)).toBe('harness-reviewer');
     });
 
-    it('falls back to harness-evaluator when role exists but is not enabled', () => {
+    it('falls back to tester when reviewer disabled', () => {
+      const enabled = new Set<import('@harnessly/shared').AgentRole>(['tester']);
+      expect(pickRecommendedAgent('completion_review', null, enabled)).toBe('harness-tester');
+    });
+
+    it('returns null when no v3-core role is enabled at all', () => {
       const empty = new Set<import('@harnessly/shared').AgentRole>();
-      expect(pickRecommendedAgent('completion_review', 'review', empty)).toBe(
-        'harness-evaluator',
-      );
+      expect(pickRecommendedAgent('completion_review', 'review', empty)).toBeNull();
     });
   });
 });

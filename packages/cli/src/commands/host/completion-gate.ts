@@ -72,7 +72,7 @@ async function countPreviousBlocks(workDir: string, taskId: string): Promise<num
 async function resolveCompletionRecommendedAgent(
   workDir: string,
   activeTaskId: string,
-): Promise<{ agent: string; stage: StageMarker | null; failureStage: StageMarker | null }> {
+): Promise<{ agent: string | null; stage: StageMarker | null; failureStage: StageMarker | null }> {
   const manifests = await loadAgentManifests(workDir);
   const enabledRoles = collectEnabledRoles(manifests);
 
@@ -83,14 +83,14 @@ async function resolveCompletionRecommendedAgent(
     stage = ctx.state.currentStage;
     failureStage = ctx.state.lastFailureStage ?? null;
   } catch {
-    // task 工件缺失：用 fallback
+    // task 工件缺失：失败 stage 取不到，下游退化为按 enabledRoles 选择
   }
 
   // 优先按 lastFailureStage 路由：让上次挂在 review/test 的任务复查时调对应角色
+  // 没有任何 5 角色 enabled 时返回 null，hook 文案会提醒用户检查 .harness/agents/
   const targetStage = failureStage ?? stage;
   const agent = pickRecommendedAgent('completion_review', targetStage, enabledRoles);
-  // pickRecommendedAgent('completion_review', ...) 至少返回 'harness-evaluator'
-  return { agent: agent ?? 'harness-evaluator', stage, failureStage };
+  return { agent, stage, failureStage };
 }
 
 export async function runHostCompletionGate(
@@ -122,6 +122,7 @@ export async function runHostCompletionGate(
 
   // 解析推荐角色（一次解析，全 block 路径复用）
   const recommendation = await resolveCompletionRecommendedAgent(workDir, activeTaskId);
+  // 当 5 角色 manifest 都禁用时返回 null；hook 文案会提示用户检查 manifest 配置
   const recommendedAgent = recommendation.agent;
   const activeStage = recommendation.stage;
   const lastFailureStage = recommendation.failureStage;
@@ -140,7 +141,6 @@ export async function runHostCompletionGate(
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: 'harness-evaluator',
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? 'must_fix_scope_then_eval' : 'fix_scope_violation_then_rerun',
@@ -154,7 +154,6 @@ export async function runHostCompletionGate(
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: 'harness-evaluator',
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? 'must_fix_scope_then_eval' : 'fix_scope_violation_then_rerun',
@@ -177,7 +176,6 @@ export async function runHostCompletionGate(
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: 'harness-evaluator',
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? 'must_run_eval' : 'delegate_to_evaluator_or_run_eval',
@@ -191,7 +189,6 @@ export async function runHostCompletionGate(
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: 'harness-evaluator',
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? 'must_run_eval' : 'delegate_to_evaluator_or_run_eval',
@@ -211,7 +208,6 @@ export async function runHostCompletionGate(
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: 'harness-evaluator',
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? 'must_fix_and_rerun_eval' : 'fix_findings_then_rerun_eval',
@@ -225,7 +221,6 @@ export async function runHostCompletionGate(
       scopeCheck,
       blockCount: blockCount + 1,
       requiresEvaluator,
-      evaluatorAgent: 'harness-evaluator',
       recommendedAgent,
       evalCommand,
       nextStep: blockCount > 0 ? 'must_fix_and_rerun_eval' : 'fix_findings_then_rerun_eval',

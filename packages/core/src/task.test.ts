@@ -67,6 +67,7 @@ describe('TaskManager', () => {
         goal: '补状态命令',
         status: 'ready',
         currentStage: 'design',
+        currentOwner: 'designer',
         retryCount: 2,
         lastFailureStage: 'test',
         updatedAt: now,

@@ -63,11 +63,10 @@ const SAMPLE_CONTRACT = [
 const SAMPLE_PLAN = '1. 改 list 输出\n2. 改 status 输出\n';
 
 describe('getArchiveTargetPaths', () => {
-  it('builds docs/architecture/<topic>/<task-id>/ paths', () => {
+  it('builds docs/architecture/<topic>/ paths', () => {
     const paths = getArchiveTargetPaths('/repo', 'task-1', 'auth');
     expect(paths.archDir).toBe('/repo/docs/architecture');
     expect(paths.topicDir).toBe('/repo/docs/architecture/auth');
-    expect(paths.taskDir).toBe('/repo/docs/architecture/auth/task-1');
   });
 
   it('falls back to topic="tasks" when omitted', () => {
@@ -120,24 +119,25 @@ describe('archiveTaskArtifacts', () => {
 
     expect(result.taskId).toBe('task-1');
     expect(result.topic).toBe('tasks');
-    expect(result.targetDir).toBe(path.join(workDir, 'docs', 'architecture', 'tasks', 'task-1'));
-    expect(result.files.map((f) => path.basename(f.target))).toEqual([
-      'contract.yaml',
-      'plan.md',
+    expect(result.targetDir).toBe(path.join(workDir, 'docs', 'architecture', 'tasks'));
+    expect(result.files.map((f) => path.basename(f.target)).sort()).toEqual([
       'README.md',
+      'task-1.design.md',
+      'task-1.promotion.json',
+      'task-1.requirement.md',
     ]);
-    expect(result.files.find((f) => f.target.endsWith('contract.yaml'))?.status).toBe('created');
-    expect(result.files.find((f) => f.target.endsWith('plan.md'))?.status).toBe('created');
+    expect(result.files.find((f) => f.target.endsWith('task-1.requirement.md'))?.status).toBe('created');
+    expect(result.files.find((f) => f.target.endsWith('task-1.design.md'))?.status).toBe('created');
 
     // 实际文件已写入
-    expect(await readFile(path.join(result.targetDir, 'contract.yaml'), 'utf8')).toBe(SAMPLE_CONTRACT);
-    expect(await readFile(path.join(result.targetDir, 'plan.md'), 'utf8')).toBe(SAMPLE_PLAN);
+    expect(await readFile(path.join(result.targetDir, 'task-1.requirement.md'), 'utf8')).toBe(SAMPLE_CONTRACT);
+    expect(await readFile(path.join(result.targetDir, 'task-1.design.md'), 'utf8')).toBe(SAMPLE_PLAN);
 
     const readme = await readFile(path.join(result.targetDir, 'README.md'), 'utf8');
     expect(readme).toContain('# Task Archive: 修复 list 输出');
     expect(readme).toContain('archived_kind: both');
-    expect(readme).toContain('contract.yaml');
-    expect(readme).toContain('plan.md');
+    expect(readme).toContain('requirement');
+    expect(readme).toContain('design');
   });
 
   it('respects --topic and creates topic subdirectory', async () => {
@@ -174,10 +174,10 @@ describe('archiveTaskArtifacts', () => {
     const result = await archiveTaskArtifacts(workDir, 'task-1', 'design', { topic: 'auth' });
 
     expect(result.topic).toBe('auth');
-    expect(result.targetDir).toContain('docs/architecture/auth/task-1');
+    expect(result.targetDir).toContain('docs/architecture/auth');
     // kind=design 时不归档 contract
-    expect(result.files.some((f) => f.target.endsWith('contract.yaml'))).toBe(false);
-    expect(result.files.some((f) => f.target.endsWith('plan.md'))).toBe(true);
+    expect(result.files.some((f) => f.target.endsWith('task-1.requirement.md'))).toBe(false);
+    expect(result.files.some((f) => f.target.endsWith('task-1.design.md'))).toBe(true);
   });
 
   it('archives requirement-only when kind=requirement', async () => {
@@ -193,8 +193,8 @@ describe('archiveTaskArtifacts', () => {
 
     const result = await archiveTaskArtifacts(workDir, 'task-1', 'requirement');
 
-    expect(result.files.some((f) => f.target.endsWith('contract.yaml'))).toBe(true);
-    expect(result.files.some((f) => f.target.endsWith('plan.md'))).toBe(false);
+    expect(result.files.some((f) => f.target.endsWith('task-1.requirement.md'))).toBe(true);
+    expect(result.files.some((f) => f.target.endsWith('task-1.design.md'))).toBe(false);
   });
 
   it('skips already-archived files when force=false', async () => {
@@ -213,13 +213,13 @@ describe('archiveTaskArtifacts', () => {
     // 用户改了归档后的 plan
     const archivedPlan = path.join(
       workDir,
-      'docs/architecture/tasks/task-1/plan.md',
+      'docs/architecture/tasks/task-1.design.md',
     );
     await writeFile(archivedPlan, '# 用户编辑过的 plan\n', 'utf8');
 
     const result = await archiveTaskArtifacts(workDir, 'task-1', 'both');
 
-    const planFile = result.files.find((f) => f.target.endsWith('plan.md'));
+    const planFile = result.files.find((f) => f.target.endsWith('task-1.design.md'));
     expect(planFile?.status).toBe('skipped');
 
     // 文件没被覆盖
@@ -238,11 +238,11 @@ describe('archiveTaskArtifacts', () => {
     await seedTask(workDir, 'task-1', { contract: SAMPLE_CONTRACT, plan: SAMPLE_PLAN });
 
     await archiveTaskArtifacts(workDir, 'task-1', 'both');
-    const archivedPlan = path.join(workDir, 'docs/architecture/tasks/task-1/plan.md');
+    const archivedPlan = path.join(workDir, 'docs/architecture/tasks/task-1.design.md');
     await writeFile(archivedPlan, '# stale\n', 'utf8');
 
     const result = await archiveTaskArtifacts(workDir, 'task-1', 'both', { force: true });
-    const planFile = result.files.find((f) => f.target.endsWith('plan.md'));
+    const planFile = result.files.find((f) => f.target.endsWith('task-1.design.md'));
     expect(planFile?.status).toBe('updated');
     expect(await readFile(archivedPlan, 'utf8')).toBe(SAMPLE_PLAN);
   });

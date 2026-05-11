@@ -243,7 +243,6 @@ export async function runHostUserPromptSubmit(
     risk: decision.risk,
     activeTaskId,
     activeStage,
-    plannerAgent: action === 'delegate_to_planner' ? 'harness-planner' : undefined,
     recommendedAgent,
     taskCreated: false,
   });
@@ -300,7 +299,6 @@ export async function runHostUserPromptSubmit(
     taskKind: decision.taskKind,
     risk: decision.risk,
     taskCreated: false,
-    plannerAgent: action === 'delegate_to_planner' ? 'harness-planner' : undefined,
     recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,
     autoFallback: pending !== null,

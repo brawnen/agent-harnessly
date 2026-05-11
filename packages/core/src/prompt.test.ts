@@ -22,10 +22,6 @@ function makeConfig(): HarnessConfig {
     sourceOfTruthDir: '.harness/hosts',
     fallbackCreateTaskWithoutPlanner: false,
     codexUserPromptSubmitHookEnabled: true,
-    hostSubagents: {
-      planner: { useHostPlanMode: false, models: { 'claude-code': 'haiku' } },
-      evaluator: { models: { 'claude-code': 'sonnet' } },
-    },
     adapterKind: 'claude-code',
     adapterCommand: '',
   };
@@ -36,10 +32,20 @@ function makeContract(): Contract {
     goal: '修复 status 命令展示',
     templateName: 'bug-fix',
     riskLevel: 'low',
+    version: '2.0',
+    taskId: 'task-1',
+    estimatedComplexity: 'simple',
+    requiredChecks: ['test'],
     scopeInclude: ['packages/cli/src'],
     scopeExclude: ['dist/**'],
-    acceptanceCriteria: ['list 输出包含 stage', 'status 输出包含 retry'],
+    acceptanceCriteria: [
+      { criterion: 'list 输出包含 stage', verifiableBy: 'test' },
+      { criterion: 'status 输出包含 retry', verifiableBy: 'test' },
+    ],
     outOfScope: ['workflow 重构'],
+    linkedSpec: 'requirement.md',
+    linkedDesign: 'design.md',
+    createdAt: '2026-04-20T00:00:00.000Z',
   };
 }
 
@@ -47,8 +53,9 @@ function makeCtx(stage: StageMarker, overrides: Partial<TaskContext> = {}): Task
   const now = '2026-04-20T00:00:00.000Z';
   const baseState: TaskState = {
     taskId: 'task-1',
-    status: 'executing',
+    status: 'active',
     currentStage: stage,
+    currentOwner: 'developer',
     createdAt: now,
     updatedAt: now,
     completedStages: ['spec', 'design'],
@@ -123,8 +130,9 @@ describe('assemblePrompt', () => {
       makeCtx('execute', {
         state: {
           taskId: 'task-1',
-          status: 'executing',
+          status: 'active',
           currentStage: 'execute',
+          currentOwner: 'developer',
           createdAt: '2026-04-20T00:00:00.000Z',
           updatedAt: '2026-04-20T00:00:00.000Z',
           completedStages: ['spec', 'design'],
@@ -174,7 +182,7 @@ describe('assemblePrompt', () => {
       {
         taskId: 'task-prev-2',
         goal: '前一个任务卡在 test',
-        decision: 'block',
+        decision: 'fail',
         completedAt: '2026-04-19T05:00:00.000Z',
         completedStages: ['spec', 'design', 'execute', 'review', 'test'],
         retryCount: 2,

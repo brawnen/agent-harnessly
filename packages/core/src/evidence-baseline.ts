@@ -1,8 +1,18 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { EvidenceBaseline, EvidenceResult } from '@harnessly/shared';
-import { evidenceBaselineSchema } from '@harnessly/shared';
+import type {
+  BaselineDiff,
+  CheckStatus,
+  EvidenceBaseline,
+  EvidenceResult,
+  EvidenceSnapshot,
+} from '@harnessly/shared';
+import {
+  baselineDiffSchema,
+  evidenceBaselineSchema,
+  evidenceSnapshotSchema,
+} from '@harnessly/shared';
 
 import { getHarnessPaths } from './scaffold';
 
@@ -20,6 +30,17 @@ export const EVIDENCE_BASELINE_FILENAME = 'evidence-baseline.json';
 
 export function getEvidenceBaselinePath(workDir: string): string {
   return path.join(getHarnessPaths(workDir).harnessDir, EVIDENCE_BASELINE_FILENAME);
+}
+
+export function getTaskEvidenceDir(taskDir: string): string {
+  return path.join(taskDir, 'evidence');
+}
+
+export function getTaskEvidencePath(
+  taskDir: string,
+  kind: 'baseline' | 'current' | 'baseline-diff',
+): string {
+  return path.join(getTaskEvidenceDir(taskDir), `${kind}.json`);
 }
 
 function isMissingFileError(error: unknown): boolean {
@@ -45,6 +66,67 @@ export function buildEvidenceBaseline(evidence: EvidenceResult): EvidenceBaselin
     capturedAt: new Date().toISOString(),
     failedCheckNames,
   };
+}
+
+export function buildEvidenceSnapshot(evidence: EvidenceResult): EvidenceSnapshot {
+  return {
+    capturedAt: new Date().toISOString(),
+    checks: evidence.checks,
+    lintWarningsTotal: evidence.lintWarningsTotal,
+    todoCount: evidence.todoCount,
+    gitDirtyFiles: evidence.gitDirtyFiles,
+  };
+}
+
+function checkMap(snapshot: EvidenceSnapshot): Map<string, CheckStatus> {
+  return new Map(snapshot.checks.map((check) => [check.name, check.status]));
+}
+
+export function buildBaselineDiff(
+  baseline: EvidenceSnapshot,
+  current: EvidenceSnapshot,
+): BaselineDiff {
+  const baselineChecks = checkMap(baseline);
+  const currentChecks = checkMap(current);
+  const names = new Set([...baselineChecks.keys(), ...currentChecks.keys()]);
+  const checks: BaselineDiff['checks'] = {};
+
+  for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
+    const from = baselineChecks.get(name) ?? 'missing';
+    const to = currentChecks.get(name) ?? 'missing';
+    checks[name] = {
+      from,
+      to,
+      regression: from === 'passed' && to === 'failed',
+    };
+  }
+
+  return {
+    checks,
+    lintWarningsDelta: current.lintWarningsTotal - baseline.lintWarningsTotal,
+    todoDelta: current.todoCount - baseline.todoCount,
+  };
+}
+
+export async function saveEvidenceSnapshot(
+  taskDir: string,
+  kind: 'baseline' | 'current',
+  snapshot: EvidenceSnapshot,
+): Promise<void> {
+  const validated = evidenceSnapshotSchema.parse(snapshot);
+  const filePath = getTaskEvidencePath(taskDir, kind);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(validated, null, 2)}\n`, 'utf8');
+}
+
+export async function saveBaselineDiff(
+  taskDir: string,
+  diff: BaselineDiff,
+): Promise<void> {
+  const validated = baselineDiffSchema.parse(diff);
+  const filePath = getTaskEvidencePath(taskDir, 'baseline-diff');
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(validated, null, 2)}\n`, 'utf8');
 }
 
 /**

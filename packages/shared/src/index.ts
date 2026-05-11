@@ -6,19 +6,20 @@ export const HARNESSLY_VERSION = '0.0.0';
 export type HostName = 'claude-code' | 'codex' | 'gemini-cli';
 export type ProjectType = 'node' | 'go' | 'python' | 'unknown';
 export type RequiredCheck = 'build' | 'lint' | 'typecheck' | 'test';
+export type AcceptanceVerifier =
+  | 'build'
+  | 'lint'
+  | 'typecheck'
+  | 'test'
+  | 'playwright'
+  | 'api'
+  | 'manual';
 export type TemplateName = 'bug-fix' | 'feature-simple' | 'general-task';
 export type RiskLevel = 'low' | 'medium' | 'high';
+export type EstimatedComplexity = 'simple' | 'medium' | 'complex';
 export type AdapterKind = 'claude-code' | 'codex' | 'custom';
 export type FlatYamlValue = string | number | boolean | string[];
-export type TaskStatus =
-  | 'created'
-  | 'contracting'
-  | 'planning'
-  | 'ready'
-  | 'executing'
-  | 'verifying'
-  | 'passed'
-  | 'failed';
+export type TaskStatus = 'active' | 'blocked' | 'completed' | 'aborted';
 
 /**
  * v3-core 主干工作流的 6 个固定阶段。
@@ -40,6 +41,7 @@ export type WorkflowStage =
  * - 'retry'：重试动作（瞬态）
  */
 export type StageMarker = WorkflowStage | 'created' | 'failed' | 'retry';
+export type TaskOwnerRole = 'pm' | 'requirement' | 'designer' | 'developer' | 'reviewer' | 'tester';
 
 export interface PackageInfo {
   name: string;
@@ -72,29 +74,42 @@ export interface HarnessConfig {
   sourceOfTruthDir: string;
   fallbackCreateTaskWithoutPlanner: boolean;
   codexUserPromptSubmitHookEnabled: boolean;
-  hostSubagents: HostSubagentConfig;
   adapterKind: AdapterKind;
   adapterCommand: string;
 }
 
-export interface HostSubagentConfig {
-  planner: {
-    useHostPlanMode: boolean;
-    models: Partial<Record<HostName, string>>;
-  };
-  evaluator: {
-    models: Partial<Record<HostName, string>>;
-  };
-}
-
 export interface Contract {
+  version: '2.0';
+  taskId: string;
   goal: string;
+  /**
+   * 旧模板分类仍作为内部实现细节保留，不写入 v3-core contract 的规范字段。
+   */
   templateName: TemplateName;
   riskLevel: RiskLevel;
+  estimatedComplexity: EstimatedComplexity;
+  requiredChecks: RequiredCheck[];
   scopeInclude: string[];
   scopeExclude: string[];
-  acceptanceCriteria: string[];
+  acceptanceCriteria: AcceptanceCriterion[];
   outOfScope: string[];
+  linkedSpec: string;
+  linkedDesign: string;
+  assetPromotion?: AssetPromotion;
+  createdAt: string;
+}
+
+export interface AcceptanceCriterion {
+  criterion: string;
+  verifiableBy: AcceptanceVerifier;
+  testHint?: string;
+}
+
+export interface AssetPromotion {
+  promote: boolean;
+  topic?: string;
+  files: string[];
+  mode: 'new_topic' | 'append' | 'replace';
 }
 
 export interface ContractGateResult {
@@ -106,6 +121,7 @@ export interface TaskState {
   taskId: string;
   status: TaskStatus;
   currentStage: StageMarker;
+  currentOwner: TaskOwnerRole;
   createdAt: string;
   updatedAt: string;
   completedStages: StageMarker[];
@@ -137,6 +153,7 @@ export interface TaskSummary {
   goal: string;
   status: TaskStatus;
   currentStage: StageMarker;
+  currentOwner: TaskOwnerRole;
   retryCount: number;
   lastFailureStage?: StageMarker;
   updatedAt: string;
@@ -165,20 +182,37 @@ export interface EvidenceCheckResult {
   status: CheckStatus;
   command: string;
   detail: string;
+  fixHint?: string;
+  durationMs?: number;
+  testCount?: number;
 }
 
 export interface EvidenceResult {
   checks: EvidenceCheckResult[];
   changedFiles: string[];
+  lintWarningsTotal: number;
+  todoCount: number;
+  gitDirtyFiles: number;
+}
+
+export interface Skill {
+  name: string;
+  language: string;
+  command: string;
+  successExitCode: number;
+  envRequired: string[];
+  detailOnPass: string;
+  detailOnFailTemplate: string;
+  fixHintTemplate: string;
 }
 
 /**
  * commit_gate 三态决策。
  * - 'pass': 所有硬性 gate 通过，可以 commit
- * - 'block': 存在硬性失败，禁止 commit（必须修复后重跑）
- * - 'warn': 硬性 gate 全过但有软性告警，PM 须确认后才能 commit
+ * - 'needs_human_review': 没有硬失败但需要 PM/用户确认
+ * - 'fail': 存在硬性失败，禁止 commit
  */
-export type CommitDecision = 'pass' | 'block' | 'warn';
+export type CommitDecision = 'pass' | 'needs_human_review' | 'fail';
 
 export interface CommitGateResult {
   /**
@@ -219,15 +253,62 @@ export interface EvidenceBaseline {
   failedCheckNames: string[];
 }
 
+export interface EvidenceSnapshot {
+  capturedAt: string;
+  checks: EvidenceCheckResult[];
+  lintWarningsTotal: number;
+  todoCount: number;
+  gitDirtyFiles: number;
+}
+
+export interface BaselineCheckDiff {
+  from: CheckStatus | 'missing';
+  to: CheckStatus | 'missing';
+  regression: boolean;
+}
+
+export interface BaselineDiff {
+  checks: Record<string, BaselineCheckDiff>;
+  lintWarningsDelta: number;
+  todoDelta: number;
+}
+
 export interface TaskReport {
   taskId: string;
   goal: string;
+  finalStage: WorkflowStage;
+  commitDecision: CommitDecision;
+  artifacts: TaskReportArtifacts;
+  metrics: TaskReportMetrics;
+  createdAt: string;
+  finishedAt: string;
   adapter: AdapterOutput;
   evidence: EvidenceResult;
   commitGate: CommitGateResult;
   commitReady: boolean;
   summary: string;
   generatedAt: string;
+}
+
+export interface TaskReportArtifacts {
+  requirement: string;
+  contract: string;
+  design: string;
+  taskBreakdown: string;
+  implementationNotes: string;
+  review: string;
+  residentReview: string;
+  testReport: string;
+  baselineEvidence: string;
+  currentEvidence: string;
+  baselineDiff: string;
+  commitSummary: string;
+}
+
+export interface TaskReportMetrics {
+  llmCalls: number;
+  durationSeconds: number;
+  retries: number;
 }
 
 export interface TemplateDraft {
@@ -301,6 +382,8 @@ export interface AgentManifest {
   stage: WorkflowStage;
   /** 是否启用；false 则 host install 时不渲染对应文件 */
   enabled: boolean;
+  /** 是否允许宿主原生 plan mode。默认 false，避免 sub-agent 在设计阶段绕过 repo-local 工件。 */
+  planModeEnabled: boolean;
   /** 各 host 上推荐的模型。缺省值由 host 渲染层兜底 */
   models: Partial<Record<HostName, string>>;
   /** 工具白名单，host 渲染时填入 sub-agent frontmatter */
@@ -317,36 +400,20 @@ export const packageInfo: PackageInfo = {
 export const hostNameSchema = z.enum(['claude-code', 'codex', 'gemini-cli']);
 export const projectTypeSchema = z.enum(['node', 'go', 'python', 'unknown']);
 export const requiredCheckSchema = z.enum(['build', 'lint', 'typecheck', 'test']);
+export const acceptanceVerifierSchema = z.enum([
+  'build',
+  'lint',
+  'typecheck',
+  'test',
+  'playwright',
+  'api',
+  'manual',
+]);
 export const templateNameSchema = z.enum(['bug-fix', 'feature-simple', 'general-task']);
 export const riskLevelSchema = z.enum(['low', 'medium', 'high']);
+export const estimatedComplexitySchema = z.enum(['simple', 'medium', 'complex']);
 export const adapterKindSchema = z.enum(['claude-code', 'codex', 'custom']);
-export const hostSubagentConfigSchema: z.ZodType<HostSubagentConfig> = z.object({
-  planner: z.object({
-    useHostPlanMode: z.boolean(),
-    models: z.object({
-      'claude-code': z.string().min(1).optional(),
-      codex: z.string().min(1).optional(),
-      'gemini-cli': z.string().min(1).optional(),
-    }),
-  }),
-  evaluator: z.object({
-    models: z.object({
-      'claude-code': z.string().min(1).optional(),
-      codex: z.string().min(1).optional(),
-      'gemini-cli': z.string().min(1).optional(),
-    }),
-  }),
-});
-export const taskStatusSchema = z.enum([
-  'created',
-  'contracting',
-  'planning',
-  'ready',
-  'executing',
-  'verifying',
-  'passed',
-  'failed',
-]);
+export const taskStatusSchema = z.enum(['active', 'blocked', 'completed', 'aborted']);
 export const workflowStageSchema = z.enum([
   'spec',
   'design',
@@ -362,6 +429,14 @@ export const stageMarkerSchema = z.union([
   z.literal('retry'),
 ]);
 export const checkStatusSchema = z.enum(['passed', 'failed', 'skipped']);
+export const taskOwnerRoleSchema = z.enum([
+  'pm',
+  'requirement',
+  'designer',
+  'developer',
+  'reviewer',
+  'tester',
+]);
 
 export const harnessConfigSchema: z.ZodType<HarnessConfig> = z.object({
   version: z.number().int().nonnegative(),
@@ -373,19 +448,39 @@ export const harnessConfigSchema: z.ZodType<HarnessConfig> = z.object({
   sourceOfTruthDir: z.string().min(1),
   fallbackCreateTaskWithoutPlanner: z.boolean(),
   codexUserPromptSubmitHookEnabled: z.boolean(),
-  hostSubagents: hostSubagentConfigSchema,
   adapterKind: adapterKindSchema,
   adapterCommand: z.string(),
 });
 
+export const acceptanceCriterionSchema: z.ZodType<AcceptanceCriterion> = z.object({
+  criterion: z.string().min(1),
+  verifiableBy: acceptanceVerifierSchema,
+  testHint: z.string().optional(),
+});
+
+export const assetPromotionSchema: z.ZodType<AssetPromotion> = z.object({
+  promote: z.boolean(),
+  topic: z.string().min(1).optional(),
+  files: z.array(z.string().min(1)),
+  mode: z.enum(['new_topic', 'append', 'replace']),
+});
+
 export const contractSchema: z.ZodType<Contract> = z.object({
+  version: z.literal('2.0'),
+  taskId: z.string(),
   goal: z.string().min(1),
   templateName: templateNameSchema,
   riskLevel: riskLevelSchema,
+  estimatedComplexity: estimatedComplexitySchema,
+  requiredChecks: z.array(requiredCheckSchema),
   scopeInclude: z.array(z.string()),
   scopeExclude: z.array(z.string()),
-  acceptanceCriteria: z.array(z.string()),
+  acceptanceCriteria: z.array(acceptanceCriterionSchema),
   outOfScope: z.array(z.string()),
+  linkedSpec: z.string().min(1),
+  linkedDesign: z.string().min(1),
+  assetPromotion: assetPromotionSchema.optional(),
+  createdAt: z.string().min(1),
 });
 
 export const adapterOutputSchema: z.ZodType<AdapterOutput> = z.object({
@@ -401,14 +496,31 @@ export const evidenceCheckResultSchema: z.ZodType<EvidenceCheckResult> = z.objec
   status: checkStatusSchema,
   command: z.string(),
   detail: z.string(),
+  fixHint: z.string().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  testCount: z.number().int().nonnegative().optional(),
 });
 
 export const evidenceResultSchema: z.ZodType<EvidenceResult> = z.object({
   checks: z.array(evidenceCheckResultSchema),
   changedFiles: z.array(z.string()),
+  lintWarningsTotal: z.number().int().nonnegative(),
+  todoCount: z.number().int().nonnegative(),
+  gitDirtyFiles: z.number().int().nonnegative(),
 });
 
-export const commitDecisionSchema = z.enum(['pass', 'block', 'warn']);
+export const skillSchema: z.ZodType<Skill> = z.object({
+  name: z.string().min(1),
+  language: z.string().min(1),
+  command: z.string().min(1),
+  successExitCode: z.number().int(),
+  envRequired: z.array(z.string()),
+  detailOnPass: z.string(),
+  detailOnFailTemplate: z.string(),
+  fixHintTemplate: z.string(),
+});
+
+export const commitDecisionSchema = z.enum(['pass', 'needs_human_review', 'fail']);
 
 export const commitGateResultSchema: z.ZodType<CommitGateResult> = z.object({
   passed: z.boolean(),
@@ -423,9 +535,57 @@ export const evidenceBaselineSchema: z.ZodType<EvidenceBaseline> = z.object({
   failedCheckNames: z.array(z.string()),
 });
 
+export const evidenceSnapshotSchema: z.ZodType<EvidenceSnapshot> = z.object({
+  capturedAt: z.string().min(1),
+  checks: z.array(evidenceCheckResultSchema),
+  lintWarningsTotal: z.number().int().nonnegative(),
+  todoCount: z.number().int().nonnegative(),
+  gitDirtyFiles: z.number().int().nonnegative(),
+});
+
+export const baselineDiffSchema: z.ZodType<BaselineDiff> = z.object({
+  checks: z.record(
+    z.string(),
+    z.object({
+      from: z.union([checkStatusSchema, z.literal('missing')]),
+      to: z.union([checkStatusSchema, z.literal('missing')]),
+      regression: z.boolean(),
+    }),
+  ),
+  lintWarningsDelta: z.number().int(),
+  todoDelta: z.number().int(),
+});
+
+export const taskReportArtifactsSchema: z.ZodType<TaskReportArtifacts> = z.object({
+  requirement: z.string(),
+  contract: z.string(),
+  design: z.string(),
+  taskBreakdown: z.string(),
+  implementationNotes: z.string(),
+  review: z.string(),
+  residentReview: z.string(),
+  testReport: z.string(),
+  baselineEvidence: z.string(),
+  currentEvidence: z.string(),
+  baselineDiff: z.string(),
+  commitSummary: z.string(),
+});
+
+export const taskReportMetricsSchema: z.ZodType<TaskReportMetrics> = z.object({
+  llmCalls: z.number().int().nonnegative(),
+  durationSeconds: z.number().int().nonnegative(),
+  retries: z.number().int().nonnegative(),
+});
+
 export const taskReportSchema: z.ZodType<TaskReport> = z.object({
   taskId: z.string().min(1),
   goal: z.string().min(1),
+  finalStage: workflowStageSchema,
+  commitDecision: commitDecisionSchema,
+  artifacts: taskReportArtifactsSchema,
+  metrics: taskReportMetricsSchema,
+  createdAt: z.string().min(1),
+  finishedAt: z.string().min(1),
   adapter: adapterOutputSchema,
   evidence: evidenceResultSchema,
   commitGate: commitGateResultSchema,
@@ -462,6 +622,7 @@ export const agentManifestSchema: z.ZodType<AgentManifest> = z.object({
   description: z.string().min(1),
   stage: workflowStageSchema,
   enabled: z.boolean(),
+  planModeEnabled: z.boolean(),
   models: z.object({
     'claude-code': z.string().min(1).optional(),
     codex: z.string().min(1).optional(),
@@ -586,13 +747,6 @@ export function serializeHarnessConfig(config: HarnessConfig): string {
     source_of_truth_dir: validated.sourceOfTruthDir,
     fallback_create_task_without_planner: validated.fallbackCreateTaskWithoutPlanner,
     codex_user_prompt_submit_hook_enabled: validated.codexUserPromptSubmitHookEnabled,
-    planner_use_host_plan_mode: validated.hostSubagents.planner.useHostPlanMode,
-    planner_model_claude_code: validated.hostSubagents.planner.models['claude-code'] ?? '',
-    planner_model_codex: validated.hostSubagents.planner.models.codex ?? '',
-    planner_model_gemini_cli: validated.hostSubagents.planner.models['gemini-cli'] ?? '',
-    evaluator_model_claude_code: validated.hostSubagents.evaluator.models['claude-code'] ?? '',
-    evaluator_model_codex: validated.hostSubagents.evaluator.models.codex ?? '',
-    evaluator_model_gemini_cli: validated.hostSubagents.evaluator.models['gemini-cli'] ?? '',
     adapter_kind: validated.adapterKind,
     adapter_command: validated.adapterCommand,
   });
@@ -616,23 +770,6 @@ export function parseHarnessConfig(text: string): HarnessConfig {
         raw.codex_user_prompt_submit_hook_enabled,
         true,
       ),
-      hostSubagents: {
-        planner: {
-          useHostPlanMode: parseBoolean(raw.planner_use_host_plan_mode, true),
-          models: {
-            'claude-code': raw.planner_model_claude_code || 'haiku',
-            codex: raw.planner_model_codex || 'gpt-5.4-mini',
-            'gemini-cli': raw.planner_model_gemini_cli || 'gemini-flash',
-          },
-        },
-        evaluator: {
-          models: {
-            'claude-code': raw.evaluator_model_claude_code || 'sonnet',
-            codex: raw.evaluator_model_codex || 'gpt-5.4',
-            'gemini-cli': raw.evaluator_model_gemini_cli || 'gemini-pro',
-          },
-        },
-      },
       adapterKind: raw.adapter_kind ?? 'claude-code',
       adapterCommand: raw.adapter_command ?? '',
     },
@@ -644,33 +781,172 @@ export function validateContract(contract: Contract): Contract {
   return parseWithSchema(contractSchema, contract, 'contract');
 }
 
+function yamlList(items: readonly string[], indent = 0): string[] {
+  const pad = ' '.repeat(indent);
+  return items.length > 0 ? items.map((item) => `${pad}- ${item}`) : [`${pad}[]`];
+}
+
 export function serializeContract(contract: Contract): string {
   const validated = validateContract(contract);
+  const lines: string[] = [
+    `version: "${validated.version}"`,
+    `task_id: ${validated.taskId}`,
+    `goal: ${validated.goal}`,
+    'scope:',
+    '  include:',
+    ...yamlList(validated.scopeInclude, 4),
+    '  exclude:',
+    ...yamlList(validated.scopeExclude, 4),
+    'acceptance_criteria:',
+  ];
 
-  return serializeFlatYaml({
-    goal: validated.goal,
-    template_name: validated.templateName,
-    risk_level: validated.riskLevel,
-    scope_include: validated.scopeInclude,
-    scope_exclude: validated.scopeExclude,
-    acceptance_criteria: validated.acceptanceCriteria,
-    out_of_scope: validated.outOfScope,
-  });
+  for (const item of validated.acceptanceCriteria) {
+    lines.push(`  - criterion: ${item.criterion}`);
+    lines.push(`    verifiable_by: ${item.verifiableBy}`);
+    if (item.testHint) {
+      lines.push(`    test_hint: ${item.testHint}`);
+    }
+  }
+
+  lines.push(
+    `risk_level: ${validated.riskLevel}`,
+    `estimated_complexity: ${validated.estimatedComplexity}`,
+    'required_checks:',
+    ...yamlList(validated.requiredChecks, 2),
+    `linked_spec: ${validated.linkedSpec}`,
+    `linked_design: ${validated.linkedDesign}`,
+  );
+
+  if (validated.assetPromotion) {
+    lines.push(
+      'asset_promotion:',
+      `  promote: ${validated.assetPromotion.promote}`,
+    );
+    if (validated.assetPromotion.topic) {
+      lines.push(`  topic: ${validated.assetPromotion.topic}`);
+    }
+    lines.push('  files:', ...yamlList(validated.assetPromotion.files, 4));
+    lines.push(`  mode: ${validated.assetPromotion.mode}`);
+  }
+
+  lines.push(
+    `created_at: ${validated.createdAt}`,
+    `template_name: ${validated.templateName}`,
+    'out_of_scope:',
+    ...yamlList(validated.outOfScope, 2),
+    '',
+  );
+
+  return lines.join('\n');
 }
 
 export function parseContract(text: string): Contract {
   const raw = parseFlatYaml(text);
+  const readScalar = (key: string): string | undefined => {
+    const match = text.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
+    return match?.[1]?.trim().replace(/^"|"$/g, '');
+  };
+  const readIndentedList = (heading: string): string[] => {
+    const lines = text.split(/\r?\n/);
+    const start = lines.findIndex((line) => line.trim() === heading);
+    if (start === -1) return [];
+    const result: string[] = [];
+    for (let i = start + 1; i < lines.length; i += 1) {
+      const line = lines[i] ?? '';
+      if (/^\S/.test(line) && line.trim().endsWith(':')) break;
+      const item = line.match(/^\s*-\s+(.+)$/)?.[1]?.trim();
+      if (item) result.push(item);
+      if (/^\S/.test(line) && line.trim() && !line.trim().startsWith('-')) break;
+    }
+    return result;
+  };
+  const readScopeList = (key: 'include' | 'exclude'): string[] => {
+    const lines = text.split(/\r?\n/);
+    const scopeStart = lines.findIndex((line) => line.trim() === 'scope:');
+    if (scopeStart === -1) return [];
+    const keyStart = lines.findIndex((line, index) => index > scopeStart && line.trim() === `${key}:`);
+    if (keyStart === -1) return [];
+    const result: string[] = [];
+    for (let i = keyStart + 1; i < lines.length; i += 1) {
+      const line = lines[i] ?? '';
+      if (/^\s{2}\S/.test(line) && line.trim().endsWith(':')) break;
+      if (/^\S/.test(line)) break;
+      const item = line.match(/^\s*-\s+(.+)$/)?.[1]?.trim();
+      if (item) result.push(item);
+    }
+    return result;
+  };
+  const readAcceptanceCriteria = (): AcceptanceCriterion[] => {
+    const legacyAcceptance = parseStringList(raw.acceptance_criteria);
+    if (
+      legacyAcceptance.length > 0 &&
+      !legacyAcceptance.some((criterion) => criterion.startsWith('criterion:'))
+    ) {
+      return legacyAcceptance.map((criterion) => ({
+        criterion,
+        verifiableBy: 'manual' as const,
+      }));
+    }
+
+    const result: AcceptanceCriterion[] = [];
+    let current: Partial<AcceptanceCriterion> | null = null;
+    for (const line of text.split(/\r?\n/)) {
+      const criterion = line.match(/^\s*-\s+criterion:\s*(.+)$/)?.[1]?.trim();
+      if (criterion) {
+        if (current?.criterion) {
+          result.push({
+            criterion: current.criterion,
+            verifiableBy: current.verifiableBy ?? 'manual',
+            testHint: current.testHint,
+          });
+        }
+        current = { criterion };
+        continue;
+      }
+      const verifier = line.match(/^\s+verifiable_by:\s*(.+)$/)?.[1]?.trim() as AcceptanceVerifier | undefined;
+      if (verifier && current) {
+        current.verifiableBy = verifier;
+      }
+      const testHint = line.match(/^\s+test_hint:\s*(.+)$/)?.[1]?.trim();
+      if (testHint && current) {
+        current.testHint = testHint;
+      }
+    }
+    if (current?.criterion) {
+      result.push({
+        criterion: current.criterion,
+        verifiableBy: current.verifiableBy ?? 'manual',
+        testHint: current.testHint,
+      });
+    }
+    return result;
+  };
 
   return parseWithSchema(
     contractSchema,
     {
-      goal: raw.goal ?? '',
+      version: readScalar('version') ?? '2.0',
+      taskId: readScalar('task_id') ?? raw.task_id ?? '',
+      goal: readScalar('goal') ?? raw.goal ?? '',
       templateName: raw.template_name ?? 'general-task',
-      riskLevel: raw.risk_level ?? 'medium',
-      scopeInclude: parseStringList(raw.scope_include),
-      scopeExclude: parseStringList(raw.scope_exclude),
-      acceptanceCriteria: parseStringList(raw.acceptance_criteria),
-      outOfScope: parseStringList(raw.out_of_scope),
+      riskLevel: readScalar('risk_level') ?? raw.risk_level ?? 'medium',
+      estimatedComplexity: readScalar('estimated_complexity') ?? raw.estimated_complexity ?? 'medium',
+      requiredChecks: parseStringList(raw.required_checks).length > 0
+        ? parseStringList(raw.required_checks)
+        : readIndentedList('required_checks:'),
+      scopeInclude: parseStringList(raw.scope_include).length > 0
+        ? parseStringList(raw.scope_include)
+        : readScopeList('include'),
+      scopeExclude: parseStringList(raw.scope_exclude).length > 0
+        ? parseStringList(raw.scope_exclude)
+        : readScopeList('exclude'),
+      acceptanceCriteria: readAcceptanceCriteria(),
+      outOfScope: parseStringList(raw.out_of_scope).length > 0
+        ? parseStringList(raw.out_of_scope)
+        : readIndentedList('out_of_scope:'),
+      linkedSpec: readScalar('linked_spec') ?? raw.linked_spec ?? 'requirement.md',
+      linkedDesign: readScalar('linked_design') ?? raw.linked_design ?? 'design.md',
+      createdAt: readScalar('created_at') ?? raw.created_at ?? new Date(0).toISOString(),
     },
     'contract',
   );
@@ -686,6 +962,83 @@ export function serializeTaskReport(report: TaskReport): string {
 
 export function parseTaskReport(text: string): TaskReport {
   return parseWithSchema(taskReportSchema, JSON.parse(text) as unknown, 'task report');
+}
+
+const REQUIREMENT_REQUIRED_SECTIONS = [
+  'Goal',
+  'In Scope',
+  'Out of Scope',
+  'Affected Modules',
+  'Acceptance Criteria',
+  'Risks',
+  'Open Questions',
+];
+
+const HEDGING_WORDS = ['建议', '可以', '推荐', '可选', 'suggest', 'recommend', 'optional'];
+const FORWARD_REFERENCE_PATTERNS = [/同上/, /与\s*.+\s*平行/, /细节见别处/];
+
+function hasMarkdownSection(markdown: string, title: string): boolean {
+  return new RegExp(`^##\\s+${title}\\s*$`, 'im').test(markdown);
+}
+
+function listSectionItems(markdown: string, title: string): string[] {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${title}`.toLowerCase());
+  if (start === -1) return [];
+  const result: string[] = [];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? '';
+    if (/^##\s+/.test(line)) break;
+    const item = line.match(/^\s*[-*]\s+(.+)$/)?.[1]?.trim();
+    if (item) result.push(item);
+  }
+  return result;
+}
+
+export function validateRequirementMarkdown(markdown: string): string[] {
+  const failures: string[] = [];
+  for (const section of REQUIREMENT_REQUIRED_SECTIONS) {
+    if (!hasMarkdownSection(markdown, section)) {
+      failures.push(`缺少 ## ${section} 小节`);
+    }
+  }
+
+  for (const section of ['In Scope', 'Out of Scope', 'Acceptance Criteria']) {
+    if (hasMarkdownSection(markdown, section) && listSectionItems(markdown, section).length === 0) {
+      failures.push(`## ${section} 必须包含至少一个列表项`);
+    }
+  }
+
+  const lower = markdown.toLowerCase();
+  for (const word of HEDGING_WORDS) {
+    if (lower.includes(word.toLowerCase())) {
+      failures.push(`requirement.md 含模糊词：${word}`);
+    }
+  }
+
+  return failures;
+}
+
+export function validateDesignMarkdown(markdown: string): string[] {
+  const failures: string[] = [];
+  if (!hasMarkdownSection(markdown, 'Feasibility Self-Check')) {
+    failures.push('缺少 ## Feasibility Self-Check 小节');
+  }
+  if (!/备选|方案\s*[AB]|Alternative/i.test(markdown)) {
+    failures.push('design.md 必须至少对比两种备选方案');
+  }
+  if (!/接口|符号|契约|API|Interface/i.test(markdown)) {
+    failures.push('design.md 必须包含接口/契约说明');
+  }
+  if (!/影响|Affected|文件/.test(markdown)) {
+    failures.push('design.md 必须列出影响范围');
+  }
+  for (const pattern of FORWARD_REFERENCE_PATTERNS) {
+    if (pattern.test(markdown)) {
+      failures.push(`design.md 含前向引用：${pattern.source}`);
+    }
+  }
+  return failures;
 }
 
 /**
@@ -705,6 +1058,7 @@ export function serializeAgentManifestYaml(manifest: AgentManifest): string {
     description: validated.description,
     stage: validated.stage,
     enabled: validated.enabled,
+    plan_mode_enabled: validated.planModeEnabled,
     model_claude_code: validated.models['claude-code'] ?? '',
     model_codex: validated.models.codex ?? '',
     model_gemini_cli: validated.models['gemini-cli'] ?? '',
@@ -734,6 +1088,7 @@ export function parseAgentManifestYaml(text: string): AgentManifest {
       description: raw.description ?? '',
       stage: raw.stage ?? '',
       enabled: parseBoolean(raw.enabled, true),
+      planModeEnabled: parseBoolean(raw.plan_mode_enabled, false),
       models,
       toolWhitelist: parseStringList(raw.tool_whitelist),
       prompt: '',

@@ -104,7 +104,7 @@ describe('host user-prompt-submit command', () => {
     expect(events).toContain('"taskKind":"question"');
   });
 
-  it('should delegate new tasks to planner by default instead of creating a task', async () => {
+  it('should delegate new tasks to v3-core requirement role by default', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -116,7 +116,6 @@ describe('host user-prompt-submit command', () => {
     const payload = JSON.parse(output) as {
       action: string;
       taskCreated: boolean;
-      plannerAgent?: string;
       recommendedAgent?: string | null;
       nextStep: string;
       fallbackCreateTaskWithoutPlanner: boolean;
@@ -129,9 +128,7 @@ describe('host user-prompt-submit command', () => {
 
     expect(payload.action).toBe('delegate_to_planner');
     expect(payload.taskCreated).toBe(false);
-    // 老的复合别名字段保留（向后兼容）
-    expect(payload.plannerAgent).toBe('harness-planner');
-    // v3-core 新字段：init 默认启用 requirement → 推荐路由到 requirement
+    // v3-core: init 默认启用 requirement → 推荐路由到 requirement
     expect(payload.recommendedAgent).toBe('harness-requirement');
     expect(payload.nextStep).toBe('delegate_to_planner');
     expect(payload.fallbackCreateTaskWithoutPlanner).toBe(false);
@@ -142,7 +139,7 @@ describe('host user-prompt-submit command', () => {
     expect(activeTask).toBe('');
   });
 
-  it('should fall back to harness-planner when requirement role is disabled', async () => {
+  it('returns null recommendedAgent when requirement role is disabled (no v2 alias fallback)', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -159,13 +156,12 @@ describe('host user-prompt-submit command', () => {
     );
     const payload = JSON.parse(output) as {
       action: string;
-      plannerAgent?: string;
       recommendedAgent?: string | null;
     };
 
     expect(payload.action).toBe('delegate_to_planner');
-    // requirement 关闭 → recommendedAgent 回退到复合别名
-    expect(payload.recommendedAgent).toBe('harness-planner');
+    // v3-core 不再回退到 'harness-planner' 复合别名
+    expect(payload.recommendedAgent).toBeNull();
   });
 
   it('should route resume_task by current stage (design → harness-designer)', async () => {
@@ -335,14 +331,15 @@ describe('host user-prompt-submit command', () => {
     const payload1 = JSON.parse(output1) as {
       action: string;
       taskCreated: boolean;
-      plannerAgent?: string;
+      recommendedAgent?: string | null;
       nextStep: string;
       autoFallback: boolean;
     };
 
     expect(payload1.action).toBe('delegate_to_planner');
     expect(payload1.taskCreated).toBe(false);
-    expect(payload1.plannerAgent).toBe('harness-planner');
+    // v3-core: 默认 requirement 启用，推荐 harness-requirement
+    expect(payload1.recommendedAgent).toBe('harness-requirement');
     expect(payload1.autoFallback).toBe(false);
 
     // 第二次：Planner 未生效 → 自动降级为 create_task

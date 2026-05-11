@@ -32,7 +32,7 @@ export function createTemplateDraft(
     requiredChecks: config.requiredChecks,
     scopeInclude: contract.scopeInclude,
     outOfScope: contract.outOfScope,
-    acceptanceCriteria: contract.acceptanceCriteria,
+    acceptanceCriteria: contract.acceptanceCriteria.map((item) => item.criterion),
   };
 }
 

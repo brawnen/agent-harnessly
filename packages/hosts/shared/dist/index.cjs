@@ -37,8 +37,6 @@ function getRepoLocalShellPaths(host) {
     case "claude-code":
       return [
         ".claude/settings.json",
-        ".claude/agents/harness-planner.md",
-        ".claude/agents/harness-evaluator.md",
         ".harness/hosts/claude-code/hooks/session_start.js",
         ".harness/hosts/claude-code/hooks/user_prompt_submit.js",
         ".harness/hosts/claude-code/hooks/stop.js",
@@ -51,9 +49,7 @@ function getRepoLocalShellPaths(host) {
         ".harness/hosts/codex/hooks/session_start.js",
         ".harness/hosts/codex/hooks/user_prompt_submit.js",
         ".harness/hosts/codex/hooks/stop.js",
-        ".harness/hosts/codex/hooks/shared/codex-hook-io.js",
-        ".codex/agents/harness-planner.toml",
-        ".codex/agents/harness-evaluator.toml"
+        ".harness/hosts/codex/hooks/shared/codex-hook-io.js"
       ];
     case "gemini-cli":
       return [".gemini/settings.json"];
@@ -96,7 +92,7 @@ function renderClaudeCodeSubagentFile(manifest) {
   return `${frontmatter.join("\n")}${ensureTrailingNewline}`;
 }
 function renderCodexSubagentFile(manifest) {
-  const model = manifest.models.codex ?? "gpt-5.4";
+  const model = manifest.models.codex ?? "gpt-5.5";
   const promptBody = manifest.prompt.trim().length > 0 ? manifest.prompt : `Harness ${manifest.role} agent.`;
   const lines = [
     "# Managed by Harnessly",

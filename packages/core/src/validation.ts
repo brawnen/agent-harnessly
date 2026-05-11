@@ -101,7 +101,8 @@ export async function runLevel2Validation(
   }
 
   const checks = await Promise.all(
-    contract.acceptanceCriteria.map(async (criterion, index) => {
+    contract.acceptanceCriteria.map(async (item, index) => {
+      const criterion = item.criterion;
       if (criterion.startsWith('file:')) {
         return runFileCheck(index, workDir, criterion.slice('file:'.length).trim());
       }

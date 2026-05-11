@@ -14,7 +14,10 @@ export interface HarnessPaths {
   hostsDir: string;
   tasksDir: string;
   templatesDir: string;
+  skillsDir: string;
   configFile: string;
+  structureRulesFile: string;
+  reviewAgentsFile: string;
   globalRulesFile: string;
   activeTaskFile: string;
 }
@@ -29,10 +32,41 @@ export function getHarnessPaths(workDir: string): HarnessPaths {
     hostsDir: path.join(harnessDir, 'hosts'),
     tasksDir: path.join(harnessDir, 'tasks'),
     templatesDir: path.join(harnessDir, 'templates'),
+    skillsDir: path.join(harnessDir, 'skills'),
     configFile: path.join(harnessDir, 'harness.config.yaml'),
+    structureRulesFile: path.join(harnessDir, 'structure-rules.yaml'),
+    reviewAgentsFile: path.join(harnessDir, 'review-agents.yaml'),
     globalRulesFile: path.join(harnessDir, 'GLOBAL_RULES.md'),
     activeTaskFile: path.join(harnessDir, 'active-task.txt'),
   };
+}
+
+export function renderStructureRulesTemplate(): string {
+  return [
+    'file_length:',
+    '  max: 500',
+    '  exclude:',
+    '    - dist/',
+    '    - node_modules/',
+    'unique_implementations: []',
+    'package_dependencies:',
+    '  forbid: []',
+    '  fix_hint: 保持包边界清晰，避免反向依赖',
+    '',
+  ].join('\n');
+}
+
+export function renderReviewAgentsTemplate(): string {
+  return [
+    'review_agents:',
+    '  - name: reliability',
+    '    triggers: [pre_merge]',
+    '    model: gpt-5.5',
+    '    blocking_severity: P0',
+    '    prompt: |',
+    '      检查可靠性、回归风险和证据缺口。',
+    '',
+  ].join('\n');
 }
 
 export async function ensureHarnessDirectories(workDir: string): Promise<HarnessPaths> {
@@ -44,6 +78,7 @@ export async function ensureHarnessDirectories(workDir: string): Promise<Harness
   await mkdir(paths.hostsDir, { recursive: true });
   await mkdir(paths.tasksDir, { recursive: true });
   await mkdir(paths.templatesDir, { recursive: true });
+  await mkdir(paths.skillsDir, { recursive: true });
 
   return paths;
 }

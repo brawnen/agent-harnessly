@@ -4,25 +4,39 @@ import type { LLMClient } from './llm';
 import { createTemplateRegistry } from './template';
 
 export interface ContractGenerationOptions {
+  taskId?: string;
   goal: string;
   templateName: TemplateName;
   llmClient?: LLMClient | null;
 }
 
-export function generateFallbackContract(goal: string, templateName: TemplateName): Contract {
+export function generateFallbackContract(
+  goal: string,
+  templateName: TemplateName,
+  taskId = '',
+): Contract {
   const template = createTemplateRegistry().get(templateName);
 
   return {
+    version: '2.0',
+    taskId,
     goal,
     templateName,
     riskLevel: template.defaultRiskLevel,
+    estimatedComplexity: template.defaultRiskLevel === 'low' ? 'simple' : 'medium',
+    requiredChecks: [],
     scopeInclude: [...template.defaultScopeInclude],
     scopeExclude: [...template.defaultScopeExclude],
     acceptanceCriteria: [
-      `目标“${goal}”已被实现或修复`,
+      { criterion: `目标“${goal}”已被实现或修复`, verifiableBy: 'manual' as const },
       ...template.defaultAcceptanceCriteria.slice(1),
-    ],
+    ].map((item) =>
+      typeof item === 'string' ? { criterion: item, verifiableBy: 'manual' as const } : item,
+    ),
     outOfScope: [...template.defaultOutOfScope],
+    linkedSpec: 'requirement.md',
+    linkedDesign: 'design.md',
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -55,7 +69,7 @@ function createContractPrompt(goal: string, templateName: TemplateName, fallback
 }
 
 export async function generateContract(options: ContractGenerationOptions): Promise<Contract> {
-  const fallback = generateFallbackContract(options.goal, options.templateName);
+  const fallback = generateFallbackContract(options.goal, options.templateName, options.taskId);
 
   if (!options.llmClient) {
     return fallback;
@@ -71,9 +85,15 @@ export async function generateContract(options: ContractGenerationOptions): Prom
     });
 
     return validateContract({
+      ...fallback,
       ...generated,
+      version: '2.0',
+      taskId: options.taskId ?? '',
       goal: options.goal,
       templateName: options.templateName,
+      linkedSpec: 'requirement.md',
+      linkedDesign: 'design.md',
+      createdAt: new Date().toISOString(),
     });
   } catch {
     return fallback;
@@ -89,6 +109,10 @@ export function checkContract(contract: Contract): ContractGateResult {
 
   if (!contract.templateName) {
     failures.push('template_name 缺失');
+  }
+
+  if (contract.version !== '2.0') {
+    failures.push('version 必须为 2.0');
   }
 
   if (contract.scopeInclude.length === 0) {

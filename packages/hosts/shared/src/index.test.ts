@@ -17,9 +17,10 @@ const SAMPLE_REVIEWER: AgentManifest = {
   description: '审查改动',
   stage: 'review',
   enabled: true,
+  planModeEnabled: false,
   models: {
     'claude-code': 'sonnet',
-    codex: 'gpt-5.4',
+    codex: 'gpt-5.5',
   },
   toolWhitelist: ['Read', 'Bash', 'Glob'],
   prompt: '# Reviewer\n你是 reviewer agent。',
@@ -90,7 +91,7 @@ describe('renderCodexSubagentFile', () => {
     expect(text).toContain('# Managed by Harnessly');
     expect(text).toContain('name = "harness-reviewer"');
     expect(text).toContain('description = "审查改动"');
-    expect(text).toContain('model = "gpt-5.4"');
+    expect(text).toContain('model = "gpt-5.5"');
     expect(text).toContain('developer_instructions = """');
     expect(text).toContain('你是 reviewer agent。');
   });
@@ -101,7 +102,7 @@ describe('renderCodexSubagentFile', () => {
       models: { 'claude-code': 'sonnet' },
     });
 
-    expect(text).toContain('model = "gpt-5.4"');
+    expect(text).toContain('model = "gpt-5.5"');
   });
 
   it('does NOT contain [section] headers (Codex agents use top-level keys)', () => {

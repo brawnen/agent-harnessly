@@ -13,15 +13,6 @@ interface HostManifest {
     userPromptSubmitCommand: string;
     completionGateCommand: string;
 }
-interface HostSubagentConfig {
-    planner: {
-        useHostPlanMode: boolean;
-        models: Partial<Record<HostName, string>>;
-    };
-    evaluator: {
-        models: Partial<Record<HostName, string>>;
-    };
-}
 /**
  * v3-core SPEC §4 五角色 sub-agent，每个角色对应一个主阶段。
  * - requirement → spec
@@ -47,6 +38,8 @@ interface AgentManifest {
     stage: WorkflowStage;
     /** 是否启用；false 则 host install 时不渲染对应文件 */
     enabled: boolean;
+    /** 是否允许宿主原生 plan mode。默认 false，避免 sub-agent 在设计阶段绕过 repo-local 工件。 */
+    planModeEnabled: boolean;
     /** 各 host 上推荐的模型。缺省值由 host 渲染层兜底 */
     models: Partial<Record<HostName, string>>;
     /** 工具白名单，host 渲染时填入 sub-agent frontmatter */
@@ -59,9 +52,8 @@ interface CodexHookRenderOptions {
     userPromptSubmitHookEnabled?: boolean;
 }
 interface CodexManagedFilesOptions extends CodexHookRenderOptions {
-    subagents?: HostSubagentConfig;
     /**
-     * v3-core 5 角色 sub-agent manifest。传入后 renderer 会增量生成
+     * v3-core 5 角色 sub-agent manifest。renderer 会生成
      * `.codex/agents/harness-<role>.toml`。仅 enabled=true 的角色被渲染。
      */
     agentManifests?: AgentManifest[];
@@ -73,8 +65,6 @@ declare function renderCodexHookIo(manifest: HostManifest): string;
 declare function renderCodexSessionStartHook(): string;
 declare function renderCodexUserPromptSubmitHook(): string;
 declare function renderCodexStopHook(): string;
-declare function renderCodexPlannerAgent(config?: HostSubagentConfig): string;
-declare function renderCodexEvaluatorAgent(config?: HostSubagentConfig): string;
-declare function renderCodexManagedFiles(manifest: HostManifest, config?: HostSubagentConfig | CodexManagedFilesOptions): Record<string, string>;
+declare function renderCodexManagedFiles(manifest: HostManifest, options?: CodexManagedFilesOptions): Record<string, string>;
 
-export { type CodexHookRenderOptions, type CodexManagedFilesOptions, getCodexHostManifest, renderCodexConfig, renderCodexEvaluatorAgent, renderCodexHookIo, renderCodexHooks, renderCodexManagedFiles, renderCodexPlannerAgent, renderCodexSessionStartHook, renderCodexStopHook, renderCodexUserPromptSubmitHook };
+export { type CodexHookRenderOptions, type CodexManagedFilesOptions, getCodexHostManifest, renderCodexConfig, renderCodexHookIo, renderCodexHooks, renderCodexManagedFiles, renderCodexSessionStartHook, renderCodexStopHook, renderCodexUserPromptSubmitHook };

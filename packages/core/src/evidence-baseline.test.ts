@@ -28,6 +28,9 @@ function makeEvidence(): EvidenceResult {
       { name: 'build', status: 'skipped', command: 'pnpm build', detail: 'no script' },
     ],
     changedFiles: ['src/foo.ts'],
+    lintWarningsTotal: 0,
+    todoCount: 0,
+    gitDirtyFiles: 1,
   };
 }
 
@@ -57,6 +60,9 @@ describe('buildEvidenceBaseline', () => {
     const baseline = buildEvidenceBaseline({
       checks: [{ name: 'test', status: 'passed', command: 'pnpm test', detail: 'ok' }],
       changedFiles: [],
+      lintWarningsTotal: 0,
+      todoCount: 0,
+      gitDirtyFiles: 0,
     });
     expect(baseline.failedCheckNames).toEqual([]);
   });

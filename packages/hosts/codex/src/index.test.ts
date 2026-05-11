@@ -5,10 +5,8 @@ import { createHostManifest } from '@harnessly/host-shared';
 
 import {
   renderCodexConfig,
-  renderCodexEvaluatorAgent,
   renderCodexHooks,
   renderCodexManagedFiles,
-  renderCodexPlannerAgent,
 } from './index';
 
 function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManifest> = {}): AgentManifest {
@@ -18,7 +16,8 @@ function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManif
     description: `${role} agent`,
     stage: 'review',
     enabled: true,
-    models: { codex: 'gpt-5.4' },
+    planModeEnabled: false,
+    models: { codex: 'gpt-5.5' },
     toolWhitelist: ['Read', 'Bash'],
     prompt: `# ${role}\n你是 ${role}。`,
     ...overrides,
@@ -67,55 +66,16 @@ describe('codex host renderer', () => {
     );
   });
 
-  it('should render planner and evaluator sub-agent definitions', () => {
-    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'));
-
-    expect(renderCodexPlannerAgent()).toContain('name = "harness-planner"');
-    expect(renderCodexEvaluatorAgent()).toContain('name = "harness-evaluator"');
-    expect(files['.codex/agents/harness-planner.toml']).toContain('Harnessly Planner');
-    expect(files['.codex/agents/harness-evaluator.toml']).toContain('Harnessly Evaluator');
-    expect(files['.codex/agents/harness-planner.toml']).toContain(
-      'developer_instructions = """',
-    );
-    expect(files['.codex/agents/harness-evaluator.toml']).toContain(
-      'developer_instructions = """',
-    );
-    expect(files['.codex/agents/harness-planner.toml']).not.toContain('[agent]');
-    expect(files['.codex/agents/harness-planner.toml']).not.toContain('[instructions]');
-    expect(files['.codex/agents/harness-evaluator.toml']).not.toContain('[agent]');
-    expect(files['.codex/agents/harness-evaluator.toml']).not.toContain('[instructions]');
-    expect(files['.codex/agents/harness-planner.toml']).toContain(
-      'harnessly host agent-event --agent harness-planner --event started',
-    );
-    expect(files['.codex/agents/harness-evaluator.toml']).toContain(
-      'harnessly host agent-event --agent harness-evaluator --event started',
-    );
-  });
-
-  it('should render configured models and plan mode instructions', () => {
+  it('should NOT render legacy harness-planner / harness-evaluator files (v3-core only)', () => {
     const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
-      subagents: {
-        planner: {
-          useHostPlanMode: false,
-          models: {
-            codex: 'gpt-5.5-mini',
-          },
-        },
-        evaluator: {
-          models: {
-            codex: 'gpt-5.5',
-          },
-        },
-      },
+      agentManifests: [makeManifest('requirement', { stage: 'spec' })],
     });
 
-    expect(files['.codex/agents/harness-planner.toml']).toContain('model = "gpt-5.5-mini"');
-    expect(files['.codex/agents/harness-planner.toml']).toContain('默认走结构化产出路径');
-    expect(files['.codex/agents/harness-planner.toml']).toContain('不进入 plan mode');
-    expect(files['.codex/agents/harness-evaluator.toml']).toContain('model = "gpt-5.5"');
+    expect(files['.codex/agents/harness-planner.toml']).toBeUndefined();
+    expect(files['.codex/agents/harness-evaluator.toml']).toBeUndefined();
   });
 
-  it('should incrementally render 5-role sub-agents when agentManifests are provided', () => {
+  it('should render only enabled v3-core 5-role sub-agents', () => {
     const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
       agentManifests: [
         makeManifest('requirement', { stage: 'spec' }),
@@ -126,11 +86,6 @@ describe('codex host renderer', () => {
       ],
     });
 
-    // 老复合别名保留
-    expect(files['.codex/agents/harness-planner.toml']).toBeDefined();
-    expect(files['.codex/agents/harness-evaluator.toml']).toBeDefined();
-
-    // 4 个 enabled=true 角色被渲染
     expect(files['.codex/agents/harness-requirement.toml']).toContain('name = "harness-requirement"');
     expect(files['.codex/agents/harness-designer.toml']).toContain('name = "harness-designer"');
     expect(files['.codex/agents/harness-reviewer.toml']).toContain('name = "harness-reviewer"');
@@ -140,12 +95,20 @@ describe('codex host renderer', () => {
     expect(files['.codex/agents/harness-developer.toml']).toBeUndefined();
   });
 
-  it('should preserve old 2-role behavior when agentManifests are absent', () => {
+  it('renders the configured codex model from manifest', () => {
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
+      agentManifests: [
+        makeManifest('reviewer', { models: { codex: 'gpt-5.5' } }),
+      ],
+    });
+
+    expect(files['.codex/agents/harness-reviewer.toml']).toContain('model = "gpt-5.5"');
+  });
+
+  it('produces no agent files when agentManifests is omitted', () => {
     const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'));
 
-    expect(files['.codex/agents/harness-requirement.toml']).toBeUndefined();
-    expect(files['.codex/agents/harness-reviewer.toml']).toBeUndefined();
-    expect(files['.codex/agents/harness-planner.toml']).toBeDefined();
-    expect(files['.codex/agents/harness-evaluator.toml']).toBeDefined();
+    const agentFiles = Object.keys(files).filter((p) => p.startsWith('.codex/agents/'));
+    expect(agentFiles).toEqual([]);
   });
 });

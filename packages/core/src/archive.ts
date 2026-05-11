@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { TaskReport } from '@harnessly/shared';
+import type { AssetPromotion, TaskReport } from '@harnessly/shared';
 import { parseTaskReport } from '@harnessly/shared';
 
 import { TaskManager } from './task';
@@ -23,6 +23,8 @@ export type ArchiveKind = 'requirement' | 'design' | 'both';
 export interface ArchiveOptions {
   /** 归档分类（决定 docs/architecture 下的子目录名）。默认 'tasks' */
   topic?: string;
+  /** 资产晋升模式：new_topic 不覆盖，append 保留现有文件，replace 需配合 force 覆盖 */
+  mode?: AssetPromotion['mode'];
   /** force=true 时覆盖目标位置已有文件 */
   force?: boolean;
 }
@@ -158,12 +160,11 @@ function renderArchiveReadme(args: {
 export interface ArchiveTargetPaths {
   archDir: string;
   topicDir: string;
-  taskDir: string;
 }
 
 export function getArchiveTargetPaths(
   workDir: string,
-  taskId: string,
+  _taskId: string,
   topic: string = DEFAULT_TOPIC,
 ): ArchiveTargetPaths {
   const archDir = path.join(workDir, 'docs', 'architecture');
@@ -171,12 +172,11 @@ export function getArchiveTargetPaths(
   return {
     archDir,
     topicDir,
-    taskDir: path.join(topicDir, taskId),
   };
 }
 
 /**
- * 把指定 task 的工件晋升到 docs/architecture/<topic>/<taskId>/。
+ * 把指定 task 的工件晋升到 docs/architecture/<topic>/。
  *
  * 流程：
  * 1. 通过 TaskManager.load 校验 task 存在并加载 contract / plan
@@ -193,6 +193,7 @@ export async function archiveTaskArtifacts(
   options: ArchiveOptions = {},
 ): Promise<ArchiveResult> {
   const topic = options.topic?.trim() || DEFAULT_TOPIC;
+  const mode = options.mode ?? 'new_topic';
   const force = options.force ?? false;
 
   // 校验 task 存在 + 拉 ctx 用于元信息
@@ -204,31 +205,35 @@ export async function archiveTaskArtifacts(
 
   if (want.contract) {
     const source = path.join(ctx.taskDir, 'contract.yaml');
+    const requirementSource = path.join(ctx.taskDir, 'requirement.md');
     if (!(await fileExists(source))) {
       throw new Error(
         `task ${taskId} 缺少 contract.yaml；不能归档 requirement 工件（kind=${kind}）`,
       );
     }
-    const target = path.join(targets.taskDir, 'contract.yaml');
-    const status = await copyIfMissingOrForced(source, target, force);
-    files.push({ source, target, status });
+    const primarySource = (await fileExists(requirementSource)) ? requirementSource : source;
+    const target = path.join(targets.topicDir, `${taskId}.requirement.md`);
+    const status = await copyIfMissingOrForced(primarySource, target, force || mode === 'replace');
+    files.push({ source: primarySource, target, status });
   }
 
   if (want.plan) {
     const source = path.join(ctx.taskDir, 'plan.md');
+    const designSource = path.join(ctx.taskDir, 'design.md');
     if (!(await fileExists(source))) {
       throw new Error(`task ${taskId} 缺少 plan.md；不能归档 design 工件（kind=${kind}）`);
     }
-    const target = path.join(targets.taskDir, 'plan.md');
-    const status = await copyIfMissingOrForced(source, target, force);
-    files.push({ source, target, status });
+    const primarySource = (await fileExists(designSource)) ? designSource : source;
+    const target = path.join(targets.topicDir, `${taskId}.design.md`);
+    const status = await copyIfMissingOrForced(primarySource, target, force || mode === 'replace');
+    files.push({ source: primarySource, target, status });
   }
 
   // README.md 是元数据，每次归档都强制刷新
   const reportFile = path.join(ctx.taskDir, 'report.json');
   const report = await readTaskReportSafe(reportFile);
-  const readmePath = path.join(targets.taskDir, 'README.md');
-  await mkdir(targets.taskDir, { recursive: true });
+  const readmePath = path.join(targets.topicDir, 'README.md');
+  await mkdir(targets.topicDir, { recursive: true });
   const readmeContent = renderArchiveReadme({
     taskId,
     goal: ctx.goal,
@@ -250,10 +255,38 @@ export async function archiveTaskArtifacts(
     status: previousReadme === null ? 'created' : 'updated',
   });
 
+  const metadataPath = path.join(targets.topicDir, `${taskId}.promotion.json`);
+  const previousMetadata = await readFile(metadataPath, 'utf8').catch((error) => {
+    if (isMissingFileError(error)) return null;
+    throw error;
+  });
+  await writeFile(
+    metadataPath,
+    `${JSON.stringify(
+      {
+        taskId,
+        topic,
+        mode,
+        kind,
+        promotedAt: new Date().toISOString(),
+        sourceDir: `.harness/tasks/${taskId}`,
+        files: files.map((file) => path.relative(workDir, file.target)),
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
+  files.push({
+    source: '(generated)',
+    target: metadataPath,
+    status: previousMetadata === null ? 'created' : 'updated',
+  });
+
   return {
     taskId,
     topic,
-    targetDir: targets.taskDir,
+    targetDir: targets.topicDir,
     files,
   };
 }

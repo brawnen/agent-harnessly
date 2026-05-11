@@ -13,15 +13,6 @@ interface HostManifest {
     userPromptSubmitCommand: string;
     completionGateCommand: string;
 }
-interface HostSubagentConfig {
-    planner: {
-        useHostPlanMode: boolean;
-        models: Partial<Record<HostName, string>>;
-    };
-    evaluator: {
-        models: Partial<Record<HostName, string>>;
-    };
-}
 /**
  * v3-core SPEC §4 五角色 sub-agent，每个角色对应一个主阶段。
  * - requirement → spec
@@ -47,6 +38,8 @@ interface AgentManifest {
     stage: WorkflowStage;
     /** 是否启用；false 则 host install 时不渲染对应文件 */
     enabled: boolean;
+    /** 是否允许宿主原生 plan mode。默认 false，避免 sub-agent 在设计阶段绕过 repo-local 工件。 */
+    planModeEnabled: boolean;
     /** 各 host 上推荐的模型。缺省值由 host 渲染层兜底 */
     models: Partial<Record<HostName, string>>;
     /** 工具白名单，host 渲染时填入 sub-agent frontmatter */
@@ -56,14 +49,11 @@ interface AgentManifest {
 }
 
 /**
- * v3-core 引入的可选项：传入 5 角色 sub-agent manifest，由 renderer 增量生成
- * `.claude/agents/harness-<role>.md` 文件。仅渲染 manifest.enabled=true 的角色。
- *
- * 老的 `harness-planner` / `harness-evaluator` 文件继续生成（作为复合别名），
- * 兼容现有 hook 与 user-prompt-submit 文案。
+ * v3-core host renderer 选项：传入 5 角色 sub-agent manifest，
+ * 由 renderer 生成 `.claude/agents/harness-<role>.md` 文件。
+ * 仅渲染 manifest.enabled=true 的角色。
  */
 interface ClaudeCodeManagedFilesOptions {
-    subagents?: HostSubagentConfig;
     agentManifests?: AgentManifest[];
 }
 declare function getClaudeCodeHostManifest(): HostManifest;
@@ -72,8 +62,6 @@ declare function renderClaudeCodeSessionStartHook(): string;
 declare function renderClaudeCodeUserPromptSubmitHook(): string;
 declare function renderClaudeCodeStopHook(): string;
 declare function renderClaudeCodeSettings(_manifest: HostManifest): string;
-declare function renderClaudeCodePlannerAgent(config?: HostSubagentConfig): string;
-declare function renderClaudeCodeEvaluatorAgent(config?: HostSubagentConfig): string;
-declare function renderClaudeCodeManagedFiles(manifest: HostManifest, options?: HostSubagentConfig | ClaudeCodeManagedFilesOptions): Record<string, string>;
+declare function renderClaudeCodeManagedFiles(manifest: HostManifest, options?: ClaudeCodeManagedFilesOptions): Record<string, string>;
 
-export { type ClaudeCodeManagedFilesOptions, getClaudeCodeHostManifest, renderClaudeCodeEvaluatorAgent, renderClaudeCodeHookIo, renderClaudeCodeManagedFiles, renderClaudeCodePlannerAgent, renderClaudeCodeSessionStartHook, renderClaudeCodeSettings, renderClaudeCodeStopHook, renderClaudeCodeUserPromptSubmitHook };
+export { type ClaudeCodeManagedFilesOptions, getClaudeCodeHostManifest, renderClaudeCodeHookIo, renderClaudeCodeManagedFiles, renderClaudeCodeSessionStartHook, renderClaudeCodeSettings, renderClaudeCodeStopHook, renderClaudeCodeUserPromptSubmitHook };

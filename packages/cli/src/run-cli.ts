@@ -1,5 +1,6 @@
 import { runArchive } from './commands/archive';
 import { runEvidenceBaseline } from './commands/evidence-baseline';
+import { runFeedback } from './commands/feedback';
 import { runInit } from './commands/init';
 import { runHostCompletionGate } from './commands/host/completion-gate';
 import { runHostAgentEvent } from './commands/host/agent-event';
@@ -32,6 +33,8 @@ function printUsage(): void {
       '  harnessly archive requirement|design|both <task-id> [--topic <name>] [--force]',
       '  harnessly archive requirement|design|both --latest [--topic <name>] [--force]',
       '  harnessly evidence baseline [--show] [--clear] [--json]',
+      '  harnessly feedback list',
+      '  harnessly feedback promote <task-id> [reason]',
       '  harnessly host install [--host auto|all|claude-code|codex|gemini-cli]',
       '  harnessly host status [--json]',
       '  harnessly host sync [--host auto|all|claude-code|codex|gemini-cli]',
@@ -94,6 +97,11 @@ export async function runCli(argv: string[]): Promise<void> {
 
   if (command === 'evidence' && subcommand === 'baseline') {
     await runEvidenceBaseline(parsed.flags);
+    return;
+  }
+
+  if (command === 'feedback') {
+    await runFeedback([subcommand, ...rest].filter(Boolean));
     return;
   }
 

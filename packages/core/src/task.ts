@@ -13,6 +13,7 @@ import {
   type TaskContext,
   type TaskState,
   type TaskStatus,
+  type TaskOwnerRole,
   type TaskSummary,
   serializeContract,
   serializeTaskReport,
@@ -26,8 +27,9 @@ function createInitialTaskState(taskId: string): TaskState {
 
   return {
     taskId,
-    status: 'created',
+    status: 'active',
     currentStage: 'created',
+    currentOwner: 'pm',
     createdAt: now,
     updatedAt: now,
     completedStages: [],
@@ -53,11 +55,32 @@ function isMissingFileError(error: unknown): boolean {
   );
 }
 
+function ownerForStage(stage: StageMarker): TaskOwnerRole {
+  switch (stage) {
+    case 'spec':
+      return 'requirement';
+    case 'design':
+      return 'designer';
+    case 'execute':
+    case 'retry':
+      return 'developer';
+    case 'review':
+      return 'reviewer';
+    case 'test':
+      return 'tester';
+    case 'commit_gate':
+    case 'created':
+    case 'failed':
+      return 'pm';
+  }
+}
+
 function touchState(state: TaskState, status: TaskStatus, stage: StageMarker): TaskState {
   return {
     ...state,
     status,
     currentStage: stage,
+    currentOwner: ownerForStage(stage),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -89,6 +112,34 @@ export class TaskManager {
 
   private getContractFile(taskDir: string): string {
     return path.join(taskDir, 'contract.yaml');
+  }
+
+  private getRequirementFile(taskDir: string): string {
+    return path.join(taskDir, 'requirement.md');
+  }
+
+  private getDesignFile(taskDir: string): string {
+    return path.join(taskDir, 'design.md');
+  }
+
+  private getTaskBreakdownFile(taskDir: string): string {
+    return path.join(taskDir, 'task-breakdown.md');
+  }
+
+  private getImplementationNotesFile(taskDir: string): string {
+    return path.join(taskDir, 'implementation-notes.md');
+  }
+
+  private getReviewFile(taskDir: string): string {
+    return path.join(taskDir, 'review.md');
+  }
+
+  private getResidentReviewFile(taskDir: string): string {
+    return path.join(taskDir, 'resident-review.md');
+  }
+
+  private getTestReportFile(taskDir: string): string {
+    return path.join(taskDir, 'test-report.md');
   }
 
   private getPlanFile(taskDir: string): string {
@@ -146,16 +197,44 @@ export class TaskManager {
 
   async saveContract(ctx: TaskContext, contract: Contract): Promise<void> {
     ctx.contract = contract;
-    ctx.state = touchState(ctx.state, 'planning', 'spec');
+    ctx.state = touchState(ctx.state, 'active', 'spec');
     await writeFile(this.getContractFile(ctx.taskDir), serializeContract(contract), 'utf8');
     await this.saveState(ctx);
   }
 
+  async saveRequirement(ctx: TaskContext, requirement: string): Promise<void> {
+    await writeFile(this.getRequirementFile(ctx.taskDir), requirement, 'utf8');
+  }
+
   async savePlan(ctx: TaskContext, plan: string): Promise<void> {
     ctx.plan = plan;
-    ctx.state = touchState(ctx.state, 'ready', 'design');
+    ctx.state = touchState(ctx.state, 'active', 'design');
     await writeFile(this.getPlanFile(ctx.taskDir), plan, 'utf8');
     await this.saveState(ctx);
+  }
+
+  async saveDesign(ctx: TaskContext, design: string): Promise<void> {
+    await writeFile(this.getDesignFile(ctx.taskDir), design, 'utf8');
+  }
+
+  async saveTaskBreakdown(ctx: TaskContext, taskBreakdown: string): Promise<void> {
+    await writeFile(this.getTaskBreakdownFile(ctx.taskDir), taskBreakdown, 'utf8');
+  }
+
+  async saveImplementationNotes(ctx: TaskContext, notes: string): Promise<void> {
+    await writeFile(this.getImplementationNotesFile(ctx.taskDir), notes, 'utf8');
+  }
+
+  async saveReviewMarkdown(ctx: TaskContext, review: string): Promise<void> {
+    await writeFile(this.getReviewFile(ctx.taskDir), review, 'utf8');
+  }
+
+  async saveResidentReview(ctx: TaskContext, review: string): Promise<void> {
+    await writeFile(this.getResidentReviewFile(ctx.taskDir), review, 'utf8');
+  }
+
+  async saveTestReport(ctx: TaskContext, report: string): Promise<void> {
+    await writeFile(this.getTestReportFile(ctx.taskDir), report, 'utf8');
   }
 
   async savePrompt(ctx: TaskContext, prompt: string): Promise<string> {
@@ -165,7 +244,7 @@ export class TaskManager {
   }
 
   async saveReport(ctx: TaskContext, report: TaskReport): Promise<void> {
-    ctx.state = touchState(ctx.state, report.commitReady ? 'passed' : 'failed', 'commit_gate');
+    ctx.state = touchState(ctx.state, report.commitReady ? 'completed' : 'blocked', 'commit_gate');
     await writeFile(this.getReportFile(ctx.taskDir), serializeTaskReport(report), 'utf8');
     await this.saveState(ctx);
 
@@ -198,7 +277,7 @@ export class TaskManager {
 
   async markFailure(ctx: TaskContext, stage: StageMarker, reason: string): Promise<void> {
     ctx.state = {
-      ...touchState(ctx.state, 'failed', stage),
+      ...touchState(ctx.state, 'blocked', stage),
       lastFailureReason: reason,
       lastFailureStage: stage,
     };
@@ -208,7 +287,7 @@ export class TaskManager {
 
   async markRetrying(ctx: TaskContext): Promise<void> {
     ctx.state = {
-      ...touchState(ctx.state, 'executing', 'retry'),
+      ...touchState(ctx.state, 'active', 'retry'),
       retryCount: ctx.state.retryCount + 1,
     };
     await this.saveState(ctx);
@@ -316,6 +395,7 @@ export class TaskManager {
             goal: meta.goal,
             status: state.status,
             currentStage: state.currentStage,
+            currentOwner: state.currentOwner ?? ownerForStage(state.currentStage),
             retryCount: state.retryCount,
             lastFailureStage: state.lastFailureStage,
             updatedAt: state.updatedAt,

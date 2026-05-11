@@ -42,7 +42,7 @@ describe('host agent-event command', () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it('should record sub-agent startup events with active task context', async () => {
+  it('should record sub-agent startup events with active task context (5-role)', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -53,9 +53,9 @@ describe('host agent-event command', () => {
     const output = await captureStdout(() =>
       runHostAgentEvent(
         {
-          agent: 'harness-planner',
+          agent: 'requirement',
           event: 'started',
-          model: 'gpt-5.4-mini',
+          model: 'haiku',
         },
         [],
       ),
@@ -63,6 +63,7 @@ describe('host agent-event command', () => {
     const payload = JSON.parse(output) as {
       recorded: boolean;
       type: string;
+      role: string;
       agent: string;
       taskId: string;
       model: string;
@@ -71,10 +72,48 @@ describe('host agent-event command', () => {
 
     expect(payload.recorded).toBe(true);
     expect(payload.type).toBe('subagent.started');
-    expect(payload.agent).toBe('harness-planner');
+    expect(payload.role).toBe('requirement');
+    expect(payload.agent).toBe('harness-requirement');
     expect(payload.taskId).toBe('task-1');
-    expect(payload.model).toBe('gpt-5.4-mini');
+    expect(payload.model).toBe('haiku');
     expect(events).toContain('"type":"subagent.started"');
-    expect(events).toContain('"agent":"harness-planner"');
+    expect(events).toContain('"role":"requirement"');
+    expect(events).toContain('"agent":"harness-requirement"');
+  });
+
+  it('accepts harness-<role> form too', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    const output = await captureStdout(() =>
+      runHostAgentEvent(
+        {
+          agent: 'harness-reviewer',
+          event: 'started',
+        },
+        [],
+      ),
+    );
+    const payload = JSON.parse(output) as { role: string; agent: string };
+    expect(payload.role).toBe('reviewer');
+    expect(payload.agent).toBe('harness-reviewer');
+  });
+
+  it('rejects legacy v2 names like harness-planner / harness-evaluator', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+
+    await expect(
+      runHostAgentEvent({ agent: 'harness-planner', event: 'started' }, []),
+    ).rejects.toThrow(/允许值/);
+    await expect(
+      runHostAgentEvent({ agent: 'harness-evaluator', event: 'started' }, []),
+    ).rejects.toThrow(/允许值/);
   });
 });

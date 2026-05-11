@@ -32,8 +32,9 @@ export async function runEval(
   const ctx = await manager.resume(taskId, workDir);
   const previousReport = await manager.loadReport(taskId, workDir);
 
-  ctx.state.status = 'verifying';
+  ctx.state.status = 'active';
   ctx.state.currentStage = 'test';
+  ctx.state.currentOwner = 'tester';
   await manager.saveState(ctx);
 
   const evidence = await collectEvidence(workDir, ctx.config, ctx.contract);

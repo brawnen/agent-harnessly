@@ -9,8 +9,14 @@ describe('default harness config', () => {
     expect(config.adapterKind).toBe('codex');
     expect(config.adapterCommand).toContain('codex exec --full-auto');
     expect(config.codexUserPromptSubmitHookEnabled).toBe(true);
-    expect(config.hostSubagents.planner.useHostPlanMode).toBe(true);
-    expect(config.hostSubagents.planner.models.codex).toBe('gpt-5.4-mini');
-    expect(config.hostSubagents.evaluator.models.codex).toBe('gpt-5.4');
+    expect(config.defaultHost).toBe('codex');
+    expect(config.enabledHosts).toEqual(['codex']);
+  });
+
+  it('places the first listed host as defaultHost when multiple hosts requested', () => {
+    const config = createDefaultHarnessConfig('node', ['claude-code', 'codex']);
+
+    expect(config.defaultHost).toBe('claude-code');
+    expect(config.enabledHosts).toEqual(['claude-code', 'codex']);
   });
 });

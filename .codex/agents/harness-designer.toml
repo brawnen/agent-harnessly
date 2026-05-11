@@ -1,7 +1,7 @@
 # Managed by Harnessly
 name = "harness-designer"
 description = "在 DESIGN 阶段基于 contract 列实施步骤、依赖与风险"
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """

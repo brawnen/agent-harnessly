@@ -13,7 +13,10 @@ describe('contract generation', () => {
       llmClient: null,
     });
 
-    expect(contract).toEqual(generateFallbackContract('修复状态展示', 'bug-fix'));
+    expect(contract).toMatchObject({
+      ...generateFallbackContract('修复状态展示', 'bug-fix'),
+      createdAt: contract.createdAt,
+    });
     expect(checkContract(contract).passed).toBe(true);
   });
 
@@ -27,7 +30,11 @@ describe('contract generation', () => {
           riskLevel: 'high',
           scopeInclude: ['packages/core/src/contract.ts'],
           scopeExclude: ['dist/**'],
-          acceptanceCriteria: ['生成 contract', '通过 gate', '便于 verify'],
+          acceptanceCriteria: [
+            { criterion: '生成 contract', verifiableBy: 'manual' },
+            { criterion: '通过 gate', verifiableBy: 'manual' },
+            { criterion: '便于 verify', verifiableBy: 'manual' },
+          ],
           outOfScope: ['大重构'],
         } as T;
       },
@@ -43,13 +50,24 @@ describe('contract generation', () => {
     });
 
     expect(contract).toEqual<Contract>({
+      version: '2.0',
+      taskId: '',
       goal: '修复状态展示',
       templateName: 'bug-fix',
       riskLevel: 'high',
+      estimatedComplexity: 'medium',
+      requiredChecks: [],
       scopeInclude: ['packages/core/src/contract.ts'],
       scopeExclude: ['dist/**'],
-      acceptanceCriteria: ['生成 contract', '通过 gate', '便于 verify'],
+      acceptanceCriteria: [
+        { criterion: '生成 contract', verifiableBy: 'manual' },
+        { criterion: '通过 gate', verifiableBy: 'manual' },
+        { criterion: '便于 verify', verifiableBy: 'manual' },
+      ],
       outOfScope: ['大重构'],
+      linkedSpec: 'requirement.md',
+      linkedDesign: 'design.md',
+      createdAt: contract.createdAt,
     });
   });
 
@@ -70,6 +88,9 @@ describe('contract generation', () => {
       llmClient,
     });
 
-    expect(contract).toEqual(generateFallbackContract('修复状态展示', 'bug-fix'));
+    expect(contract).toMatchObject({
+      ...generateFallbackContract('修复状态展示', 'bug-fix'),
+      createdAt: contract.createdAt,
+    });
   });
 });

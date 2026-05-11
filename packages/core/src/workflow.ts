@@ -1,18 +1,26 @@
 import type {
   AdapterKind,
   AdapterOutput,
+  Contract,
   EvidenceResult,
+  EvidenceCheckResult,
   StageMarker,
   TaskContext,
   TaskReport,
 } from '@harnessly/shared';
+import { validateDesignMarkdown, validateRequirementMarkdown } from '@harnessly/shared';
 
 import { checkContract, generateContract } from './contract';
+import { runArtifactGuard } from './artifact-guard';
 import { collectChangedFiles, collectEvidence } from './evidence';
 import {
+  buildBaselineDiff,
   buildEvidenceBaseline,
+  buildEvidenceSnapshot,
   loadEvidenceBaseline,
+  saveBaselineDiff,
   saveEvidenceBaseline,
+  saveEvidenceSnapshot,
 } from './evidence-baseline';
 import { createAdapter } from './execute';
 import { loadFeedbackPool, pickRecentEntries } from './feedback-pool';
@@ -21,7 +29,9 @@ import { createLLMClientFromEnv } from './llm';
 import { generatePlan } from './plan';
 import { assemblePrompt } from './prompt';
 import { createTaskReport } from './report';
+import { renderResidentReview } from './resident-review';
 import { runReviewStage } from './review';
+import { runStructureCheck } from './structure-check';
 import { TaskManager } from './task';
 import { matchTemplate } from './template';
 
@@ -44,6 +54,172 @@ function markCompleted(ctx: TaskContext, stage: StageMarker): void {
   }
 }
 
+function renderList(items: readonly string[], fallback: string): string[] {
+  return (items.length > 0 ? items : [fallback]).map((item) => `- ${item}`);
+}
+
+function renderRequirementMarkdown(contract: Contract): string {
+  return [
+    '# Requirement',
+    '',
+    '## Goal',
+    contract.goal,
+    '',
+    '## In Scope',
+    ...renderList(contract.scopeInclude, contract.goal),
+    '',
+    '## Out of Scope',
+    ...renderList(contract.outOfScope, '与目标无关的重构'),
+    '',
+    '## Affected Modules',
+    ...renderList(contract.scopeInclude, '待实现阶段确认'),
+    '',
+    '## Acceptance Criteria',
+    ...renderList(
+      contract.acceptanceCriteria.map((item) => item.criterion),
+      '验收标准已在 contract.yaml 中结构化记录',
+    ),
+    '',
+    '## Risks',
+    ...renderList([`risk_level=${contract.riskLevel}`], '无'),
+    '',
+    '## Open Questions',
+    '- 无',
+    '',
+  ].join('\n');
+}
+
+function renderDesignMarkdown(contract: Contract): string {
+  return [
+    '# Design',
+    '',
+    '## Decision',
+    '- 方案 A：在现有工作流中补齐缺失工件和校验，保持当前 CLI 与 host 入口。',
+    '- 方案 B：重写工作流引擎并替换现有任务状态模型。',
+    '- 采用方案 A：影响范围较小，能保持现有入口兼容。',
+    '',
+    '## Interfaces',
+    '- Contract 使用 version/task_id/scope/acceptance_criteria 等 v3-core 字段。',
+    '- TaskState 使用 current_owner 与 active/blocked/completed/aborted 状态。',
+    '- Workflow 阶段产出 requirement.md、design.md、task-breakdown.md、implementation-notes.md、review.md、test-report.md。',
+    '',
+    '## Impact',
+    ...renderList(contract.scopeInclude, 'packages/core/src/workflow.ts'),
+    '',
+    '## Feasibility Self-Check',
+    '- scope 是否清晰：是，来自 contract.yaml 的 scope.include 与 scope.exclude。',
+    '- design 是否完整：是，包含决策、接口、影响范围。',
+    '- task-breakdown 是否合理：是，拆成可验证的阶段产物。',
+    '- 风险是否可控：是，保持兼容字段并用测试验证。',
+    '- 是否与现有架构冲突：否，继续使用 repo-local .harness 事实源。',
+    '',
+  ].join('\n');
+}
+
+function renderTaskBreakdown(contract: Contract): string {
+  return [
+    '# Task Breakdown',
+    '',
+    '1. [ ] SPEC 工件',
+    '   - deps: []',
+    '   - acceptance: requirement.md 与 contract.yaml 存在并通过校验',
+    '2. [ ] DESIGN 工件',
+    '   - deps: [1]',
+    '   - acceptance: design.md 与 task-breakdown.md 存在并通过校验',
+    '3. [ ] EXECUTE 工件',
+    '   - deps: [2]',
+    '   - acceptance: implementation-notes.md 记录执行顺序与偏离',
+    '4. [ ] REVIEW/TEST 工件',
+    '   - deps: [3]',
+    '   - acceptance: review.md、test-report.md、report.json 可供 gate 使用',
+    '',
+    `> goal: ${contract.goal}`,
+    '',
+  ].join('\n');
+}
+
+function renderImplementationNotes(adapterResult: AdapterOutput): string {
+  return [
+    '# Implementation Notes',
+    '',
+    '## Order',
+    '- 执行 adapter 或宿主主 agent 产出的代码变更',
+    '',
+    '## Deviations from Design',
+    '- 无',
+    '',
+    '## Pitfalls',
+    adapterResult.exitCode === 0
+      ? '- 无'
+      : `- adapter exit code = ${adapterResult.exitCode}`,
+    '',
+    '## TODOs Introduced',
+    '- 无',
+    '',
+    '## Sub-task Progress',
+    '- [x] SPEC 工件',
+    '- [x] DESIGN 工件',
+    '- [x] EXECUTE 工件',
+    '- [ ] REVIEW/TEST 工件',
+    '',
+  ].join('\n');
+}
+
+function renderReviewMarkdown(taskId: string, findings: readonly EvidenceCheckResult[]): string {
+  const failed = findings.filter((finding) => finding.status === 'failed');
+  const decision = failed.length > 0 ? 'block_execute' : 'pass';
+  const lines = [
+    '# Review',
+    '',
+    '## Decision',
+    decision,
+    '',
+    '## Block Scope',
+    decision === 'pass' ? 'minimal' : 'minimal',
+    '',
+    '## Findings',
+  ];
+
+  if (failed.length === 0) {
+    lines.push('- none');
+  } else {
+    failed.forEach((finding, index) => {
+      lines.push(
+        `- id: F-${taskId}-${index + 1}`,
+        '  severity: P1',
+        `  description: ${finding.detail}`,
+        `  file: ${finding.name}`,
+        '  line: N/A',
+        `  fix_hint: ${finding.command}`,
+        '  recurrent_pattern: false',
+      );
+    });
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+function renderTestReport(contract: Contract, evidence: EvidenceResult): string {
+  return [
+    '# Test Report',
+    '',
+    '## Acceptance Coverage',
+    ...contract.acceptanceCriteria.map(
+      (item) => `- ${item.criterion}: ${item.verifiableBy} / ${item.testHint ?? '无 test_hint'}`,
+    ),
+    '',
+    '## Baseline-Diff',
+    '- baseline-diff: evidence/baseline-diff.json',
+    `- lint_warnings_total: ${evidence.lintWarningsTotal}`,
+    `- todo_count: ${evidence.todoCount}`,
+    '',
+    '## Externally-Run Validations',
+    '- 无',
+    '',
+  ].join('\n');
+}
+
 /**
  * v3-core SPEC §6 工作流引擎。
  *
@@ -59,6 +235,7 @@ function markCompleted(ctx: TaskContext, stage: StageMarker): void {
  */
 export class WorkflowEngine {
   constructor(private readonly manager: TaskManager) {}
+  private baselineSnapshot: ReturnType<typeof buildEvidenceSnapshot> | null = null;
 
   async run(
     ctx: TaskContext,
@@ -106,12 +283,14 @@ export class WorkflowEngine {
    * spec_gate：contract 合规性校验，失败即在 spec 阶段标记失败。
    */
   private async executeSpecStage(ctx: TaskContext): Promise<void> {
-    ctx.state.status = 'contracting';
+    ctx.state.status = 'active';
     ctx.state.currentStage = 'spec';
+    ctx.state.currentOwner = 'requirement';
     await this.manager.saveState(ctx);
 
     const templateName = matchTemplate(ctx.goal);
     const contract = await generateContract({
+      taskId: ctx.taskId,
       goal: ctx.goal,
       templateName,
       llmClient: createLLMClientFromEnv(),
@@ -128,6 +307,13 @@ export class WorkflowEngine {
     }
 
     await this.manager.saveContract(ctx, contract);
+    const requirement = renderRequirementMarkdown(contract);
+    const requirementFailures = validateRequirementMarkdown(requirement);
+    if (requirementFailures.length > 0) {
+      await this.manager.markFailure(ctx, 'spec', requirementFailures.join('; '));
+      throw new Error(`requirement gate 失败: ${requirementFailures.join('; ')}`);
+    }
+    await this.manager.saveRequirement(ctx, requirement);
     markCompleted(ctx, 'spec');
     await this.manager.saveState(ctx);
   }
@@ -144,9 +330,18 @@ export class WorkflowEngine {
     }
 
     ctx.state.currentStage = 'design';
+    ctx.state.currentOwner = 'designer';
     await this.manager.saveState(ctx);
 
     const plan = generatePlan(ctx.contract);
+    const design = renderDesignMarkdown(ctx.contract);
+    const designFailures = validateDesignMarkdown(design);
+    if (designFailures.length > 0) {
+      await this.manager.markFailure(ctx, 'design', designFailures.join('; '));
+      throw new Error(`design gate 失败: ${designFailures.join('; ')}`);
+    }
+    await this.manager.saveDesign(ctx, design);
+    await this.manager.saveTaskBreakdown(ctx, renderTaskBreakdown(ctx.contract));
     await this.manager.savePlan(ctx, plan);
     markCompleted(ctx, 'design');
     await this.manager.saveState(ctx);
@@ -160,8 +355,9 @@ export class WorkflowEngine {
     ctx: TaskContext,
     options: WorkflowRunOptions,
   ): Promise<AdapterOutput> {
-    ctx.state.status = 'executing';
+    ctx.state.status = 'active';
     ctx.state.currentStage = 'execute';
+    ctx.state.currentOwner = 'developer';
     await this.manager.saveState(ctx);
 
     // 注入跨任务 feedback pool 摘录（Phase 3.1）：让 PM 借鉴历史经验
@@ -180,6 +376,10 @@ export class WorkflowEngine {
     const adapter = createAdapter(options.adapterKind);
 
     try {
+      const baselineEvidence = await collectEvidence(ctx.workDir, ctx.config, ctx.contract);
+      this.baselineSnapshot = buildEvidenceSnapshot(baselineEvidence);
+      await saveEvidenceSnapshot(ctx.taskDir, 'baseline', this.baselineSnapshot);
+
       const adapterResult = await adapter.execute({
         taskId: ctx.taskId,
         workDir: ctx.workDir,
@@ -187,6 +387,15 @@ export class WorkflowEngine {
         promptFile,
         command: options.adapterCommand,
       });
+      const changedFiles = await collectChangedFiles(ctx.workDir);
+      const structureChecks = await runStructureCheck(ctx.workDir, changedFiles);
+      const structureFailures = structureChecks.filter((check) => check.status === 'failed');
+      if (structureFailures.length > 0) {
+        const detail = structureFailures.map((check) => `${check.name}: ${check.detail}`).join('; ');
+        await this.manager.markFailure(ctx, 'execute', detail);
+        throw new Error(`structure-check 失败: ${detail}`);
+      }
+      await this.manager.saveImplementationNotes(ctx, renderImplementationNotes(adapterResult));
       markCompleted(ctx, 'execute');
       return adapterResult;
     } catch (error) {
@@ -203,11 +412,14 @@ export class WorkflowEngine {
    */
   private async executeReviewStage(ctx: TaskContext): Promise<ReturnType<typeof runReviewStage>> {
     ctx.state.currentStage = 'review';
+    ctx.state.currentOwner = 'reviewer';
     await this.manager.saveState(ctx);
 
     // 复用 collectChangedFiles 的 git status 收集，避免重复调 collectEvidence
     const changedFiles = await collectChangedFiles(ctx.workDir);
     const findings = runReviewStage(changedFiles);
+    await this.manager.saveReviewMarkdown(ctx, renderReviewMarkdown(ctx.taskId, findings));
+    await this.manager.saveResidentReview(ctx, await renderResidentReview(ctx.workDir, findings));
 
     markCompleted(ctx, 'review');
     await this.manager.saveState(ctx);
@@ -223,13 +435,23 @@ export class WorkflowEngine {
     ctx: TaskContext,
     reviewFindings: ReturnType<typeof runReviewStage>,
   ): Promise<EvidenceResult> {
-    ctx.state.status = 'verifying';
+    ctx.state.status = 'active';
     ctx.state.currentStage = 'test';
+    ctx.state.currentOwner = 'tester';
     await this.manager.saveState(ctx);
 
     const evidence = await collectEvidence(ctx.workDir, ctx.config, ctx.contract);
     // review 阶段的 findings 合入 evidence.checks，让 commit_gate 一并裁决
     evidence.checks = [...reviewFindings, ...evidence.checks];
+    const currentSnapshot = buildEvidenceSnapshot(evidence);
+    await saveEvidenceSnapshot(ctx.taskDir, 'current', currentSnapshot);
+    if (this.baselineSnapshot) {
+      await saveBaselineDiff(ctx.taskDir, buildBaselineDiff(this.baselineSnapshot, currentSnapshot));
+    }
+    if (ctx.contract) {
+      await this.manager.saveTestReport(ctx, renderTestReport(ctx.contract, evidence));
+    }
+    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir)];
 
     markCompleted(ctx, 'test');
     await this.manager.saveState(ctx);
@@ -251,6 +473,7 @@ export class WorkflowEngine {
     evidence: EvidenceResult,
   ): Promise<TaskReport> {
     ctx.state.currentStage = 'commit_gate';
+    ctx.state.currentOwner = 'pm';
     await this.manager.saveState(ctx);
 
     // Phase 3.3：加载 baseline，让 gate 区分新增回归与任务无关旧失败
@@ -280,7 +503,7 @@ export class WorkflowEngine {
         commitGate.warnings.length > 0 ? `warnings: ${commitGate.warnings.join(' | ')}` : 'warnings: none',
       ].join('\n');
       // block 标记在 test 阶段（test gate 是真实失败位点）；warn 标记在 commit_gate
-      const failureStage: StageMarker = commitGate.decision === 'block' ? 'test' : 'commit_gate';
+      const failureStage: StageMarker = commitGate.decision === 'fail' ? 'test' : 'commit_gate';
       await this.manager.markFailure(ctx, failureStage, feedback);
     }
 

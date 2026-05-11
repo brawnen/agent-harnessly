@@ -4,6 +4,6 @@ description: 在 REVIEW 阶段对改动做语义层审查（scope、敏感文件
 stage: review
 enabled: true
 model_claude_code: sonnet
-model_codex: gpt-5.4
+model_codex: gpt-5.5
 model_gemini_cli: gemini-pro
 tool_whitelist: Read,Bash,Glob,Grep

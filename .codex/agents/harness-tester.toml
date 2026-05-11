@@ -1,7 +1,7 @@
 # Managed by Harnessly
 name = "harness-tester"
 description = "在 TEST 阶段跑 required checks 与 acceptance 校验"
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """

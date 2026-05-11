@@ -125,11 +125,13 @@ function buildPromptSubmitContext(result, prompt) {
     return lines.join('\n');
   }
   if (result?.action === 'delegate_to_planner' && safePrompt) {
-    const agent = recommendedAgent || 'harness-planner';
+    if (!recommendedAgent) {
+      return '检测到新任务，但 .harness/agents/ 中无可用 sub-agent（requirement 角色未启用）。请检查 manifest 配置。';
+    }
     return [
       '检测到这条输入更像新任务。',
-      `请 spawn custom agent named ${agent}，由它完成 SPEC 阶段需求澄清与可验收点列举。`,
-      `${agent} 必须生成或定位 .harness/tasks/<task-id>/contract.yaml 与 plan.md；不要只返回口头计划。`,
+      `请 spawn custom agent named ${recommendedAgent}，由它完成 SPEC 阶段需求澄清与可验收点列举。`,
+      `${recommendedAgent} 必须生成或定位 .harness/tasks/<task-id>/contract.yaml 与 plan.md；不要只返回口头计划。`,
       '如当前宿主无法稳定调用 sub-agent，再按 repo 配置降级到 hook / command bridge / manual-headless。',
     ].join('\n');
   }
@@ -155,8 +157,7 @@ function buildPromptSubmitContext(result, prompt) {
 function buildCompletionDecision(result) {
   if (result?.pass === false) {
     const nextStep = result.nextStep ? `\n下一步：${result.nextStep}` : "";
-    const agent = result.recommendedAgent || result.evaluatorAgent;
-    const agentHint = agent ? `\n建议委派：${agent}` : "";
+    const agentHint = result.recommendedAgent ? `\n建议委派：${result.recommendedAgent}` : "";
     const evalCommand = result.evalCommand ? `\n可执行命令：${result.evalCommand}` : "";
     const stageHint = result.lastFailureStage
       ? `\n失败位置：${result.lastFailureStage}`

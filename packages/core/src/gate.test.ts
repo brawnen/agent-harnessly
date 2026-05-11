@@ -8,6 +8,9 @@ function makeEvidence(overrides: Partial<EvidenceResult> = {}): EvidenceResult {
   return {
     checks: [],
     changedFiles: ['src/foo.ts'],
+    lintWarningsTotal: 0,
+    todoCount: 0,
+    gitDirtyFiles: 1,
     ...overrides,
   };
 }
@@ -30,15 +33,15 @@ describe('evaluateCommitGate', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('returns block when adapter exit code is non-zero', () => {
+  it('returns fail when adapter exit code is non-zero', () => {
     const result = evaluateCommitGate(makeEvidence(), 1);
 
-    expect(result.decision).toBe('block');
+    expect(result.decision).toBe('fail');
     expect(result.passed).toBe(false);
     expect(result.failures).toContain('adapter exit code = 1');
   });
 
-  it('returns block when any check failed', () => {
+  it('returns fail when any check failed', () => {
     const result = evaluateCommitGate(
       makeEvidence({
         checks: [
@@ -48,21 +51,21 @@ describe('evaluateCommitGate', () => {
       0,
     );
 
-    expect(result.decision).toBe('block');
+    expect(result.decision).toBe('fail');
     expect(result.passed).toBe(false);
     expect(result.failures).toContain('test 失败');
   });
 
-  it('returns warn when changes are empty but no hard failures', () => {
+  it('returns needs_human_review when changes are empty but no hard failures', () => {
     const result = evaluateCommitGate(makeEvidence({ changedFiles: [] }), 0);
 
-    expect(result.decision).toBe('warn');
+    expect(result.decision).toBe('needs_human_review');
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual([]);
     expect(result.warnings).toContain('未检测到工作区变更');
   });
 
-  it('prioritizes block over warn when both signals present', () => {
+  it('prioritizes fail over needs_human_review when both signals present', () => {
     const result = evaluateCommitGate(
       makeEvidence({
         checks: [
@@ -73,7 +76,7 @@ describe('evaluateCommitGate', () => {
       0,
     );
 
-    expect(result.decision).toBe('block');
+    expect(result.decision).toBe('fail');
     expect(result.failures).toContain('lint 失败');
     // warnings 仍然记录，便于诊断
     expect(result.warnings).toContain('未检测到工作区变更');
@@ -128,7 +131,7 @@ describe('evaluateCommitGate with baseline (Phase 3.3)', () => {
       { baseline },
     );
 
-    expect(result.decision).toBe('block');
+    expect(result.decision).toBe('fail');
     expect(result.failures).toContain('test 失败');
     expect(result.failures).not.toContain('lint 失败');
     expect(result.preExistingFailures).toEqual(['lint']);
@@ -149,7 +152,7 @@ describe('evaluateCommitGate with baseline (Phase 3.3)', () => {
   it('still surfaces adapter exit code as a hard failure regardless of baseline', () => {
     // baseline 不应该掩盖 adapter 异常
     const result = evaluateCommitGate(makeEvidence(), 1, { baseline });
-    expect(result.decision).toBe('block');
+    expect(result.decision).toBe('fail');
     expect(result.failures).toContain('adapter exit code = 1');
   });
 });

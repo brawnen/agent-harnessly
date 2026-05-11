@@ -55,7 +55,7 @@ describe('host completion-gate command', () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it('should block completion without report and ask for evaluator', async () => {
+  it('should block completion without report and recommend a v3-core role', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -73,7 +73,7 @@ describe('host completion-gate command', () => {
       activeTaskId: string;
       blockCount: number;
       requiresEvaluator: boolean;
-      evaluatorAgent: string;
+      recommendedAgent: string | null;
       evalCommand: string;
       nextStep: string;
     };
@@ -84,11 +84,13 @@ describe('host completion-gate command', () => {
     expect(payload.activeTaskId).toBe('task-1');
     expect(payload.blockCount).toBe(1);
     expect(payload.requiresEvaluator).toBe(true);
-    expect(payload.evaluatorAgent).toBe('harness-evaluator');
+    // init 默认启用 reviewer/tester；fallback 优先取 reviewer
+    expect(payload.recommendedAgent).toBe('harness-reviewer');
     expect(payload.evalCommand).toBe('harnessly eval task-1');
     expect(payload.nextStep).toBe('delegate_to_evaluator_or_run_eval');
     expect(events).toContain('"type":"host.completion_gate_blocked"');
-    expect(events).toContain('"evaluatorAgent":"harness-evaluator"');
+    // v2 字段已移除
+    expect(events).not.toContain('"evaluatorAgent"');
   });
 
   it('should escalate nextStep on repeated gate blocks for the same task', async () => {
@@ -159,22 +161,19 @@ describe('host completion-gate command', () => {
     );
     const payload = JSON.parse(output) as {
       pass: boolean;
-      recommendedAgent: string;
-      evaluatorAgent: string;
+      recommendedAgent: string | null;
       activeStage: string;
       lastFailureStage: string;
     };
 
     expect(payload.pass).toBe(false);
-    // 老字段保留
-    expect(payload.evaluatorAgent).toBe('harness-evaluator');
-    // v3-core 新字段：按 lastFailureStage=test 路由
+    // v3-core：按 lastFailureStage=test 路由
     expect(payload.recommendedAgent).toBe('harness-tester');
     expect(payload.activeStage).toBe('test');
     expect(payload.lastFailureStage).toBe('test');
   });
 
-  it('should fall back to harness-evaluator when no stage info is available', async () => {
+  it('should fall back to a v3-core fallback role when no stage info is available', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -189,13 +188,14 @@ describe('host completion-gate command', () => {
     );
     const payload = JSON.parse(output) as {
       pass: boolean;
-      recommendedAgent: string;
+      recommendedAgent: string | null;
       activeStage: string | null;
       lastFailureStage: string | null;
     };
 
     expect(payload.pass).toBe(false);
-    expect(payload.recommendedAgent).toBe('harness-evaluator');
+    // 默认 reviewer/tester 都启用，fallback 优先 reviewer
+    expect(payload.recommendedAgent).toBe('harness-reviewer');
     expect(payload.activeStage).toBeNull();
     expect(payload.lastFailureStage).toBeNull();
   });
@@ -207,7 +207,7 @@ describe('host completion-gate command', () => {
 
     await captureStdout(() => runInit({ host: 'codex' }));
 
-    // 写入 contract，scope 限定在 src/foo/ (flat YAML 格式，逗号分隔数组)
+    // SPEC §11: scope.exclude 是 deny-list；改了命中 exclude 的文件 → 拦截
     await mkdir(path.join(workDir, '.harness', 'tasks', 'task-1'), { recursive: true });
     await writeFile(
       path.join(workDir, '.harness', 'tasks', 'task-1', 'contract.yaml'),
@@ -215,8 +215,8 @@ describe('host completion-gate command', () => {
         'goal: test scope gate',
         'template_name: bug-fix',
         'risk_level: low',
-        'scope_include: src/foo/',
-        'scope_exclude: docs/',
+        'scope_include: src/',
+        'scope_exclude: dist/',
         'acceptance_criteria: test passes',
         'out_of_scope: refactor',
       ].join('\n'),
@@ -224,8 +224,8 @@ describe('host completion-gate command', () => {
     );
     await writeFile(path.join(workDir, '.harness', 'active-task.txt'), 'task-1', 'utf8');
 
-    // 模拟 git diff 返回超出 scope 的文件
-    collectChangedFilesMock.mockImplementation(() => Promise.resolve(['src/bar/file.ts']));
+    // 模拟 git diff 返回命中 scope.exclude 的文件（违反 deny-list）
+    collectChangedFilesMock.mockImplementation(() => Promise.resolve(['dist/output.js']));
 
     const output = await captureStdout(() =>
       runHostCompletionGate({ message: '已完成' }, []),
@@ -235,7 +235,7 @@ describe('host completion-gate command', () => {
       reason: string;
       activeTaskId: string;
       scopeCheck: { name: string; status: string; detail: string };
-      evaluatorAgent: string;
+      recommendedAgent: string | null;
       nextStep: string;
     };
 
@@ -245,8 +245,10 @@ describe('host completion-gate command', () => {
     expect(payload.pass).toBe(false);
     expect(payload.reason).toBe('scope_violation');
     expect(payload.activeTaskId).toBe('task-1');
-    expect(payload.scopeCheck.detail).toContain('超出 scope');
-    expect(payload.evaluatorAgent).toBe('harness-evaluator');
+    expect(payload.scopeCheck.detail).toContain('dist/output.js');
+    expect(payload.scopeCheck.detail).toContain('dist/');
+    // v3-core: scope 违规阶段 fallback 推荐 reviewer
+    expect(payload.recommendedAgent).toBe('harness-reviewer');
     expect(payload.nextStep).toBe('fix_scope_violation_then_rerun');
 
     const events = await readFile(path.join(workDir, '.harness', 'events.jsonl'), 'utf8');

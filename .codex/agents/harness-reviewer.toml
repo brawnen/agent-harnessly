@@ -1,7 +1,7 @@
 # Managed by Harnessly
 name = "harness-reviewer"
 description = "在 REVIEW 阶段对改动做语义层审查（scope、敏感文件、副作用）"
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """
