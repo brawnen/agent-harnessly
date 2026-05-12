@@ -114,10 +114,38 @@ export async function loadHarnessConfig(workDir: string): Promise<HarnessConfig>
   return parseHarnessConfig(configText);
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'ENOENT'
+  );
+}
+
 export async function writeHarnessConfig(
   workDir: string,
   config: HarnessConfig,
   force = false,
 ): Promise<'created' | 'updated' | 'skipped'> {
-  return writeFileIfChanged(getHarnessPaths(workDir).configFile, serializeHarnessConfig(config), force);
+  const configPath = getHarnessPaths(workDir).configFile;
+  let mergedConfig = config;
+  let didMerge = false;
+
+  // 已有 config 时合并 enabledHosts，避免后续 init --host 覆盖之前的主机
+  try {
+    const existing = await loadHarnessConfig(workDir);
+    const mergedHosts = [...new Set([...existing.enabledHosts, ...config.enabledHosts])];
+    if (mergedHosts.length > existing.enabledHosts.length) {
+      mergedConfig = { ...existing, ...config, enabledHosts: mergedHosts };
+      didMerge = true;
+    } else if (!force) {
+      return 'skipped';
+    }
+  } catch (error) {
+    if (!isMissingFileError(error)) throw error;
+    // 文件不存在，继续写入新文件
+  }
+
+  return writeFileIfChanged(configPath, serializeHarnessConfig(mergedConfig), force || didMerge);
 }

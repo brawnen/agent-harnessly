@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getHarnessPaths, loadAgentManifests, loadHarnessConfig } from '@brawnen/harnessly-core';
+import { getHarnessPaths, loadAgentManifests, loadHarnessConfig, writeHarnessConfig } from '@brawnen/harnessly-core';
 import { renderClaudeCodeManagedFiles } from '@brawnen/harnessly-host-claude-code';
 import { renderCodexManagedFiles } from '@brawnen/harnessly-host-codex';
 import {
@@ -124,6 +124,16 @@ export async function installHostShells(workDir: string, requestedHost?: string)
   const installedPaths: string[] = [];
   const hosts = await loadEnabledHosts(workDir, requestedHost);
   const config = await loadHarnessConfig(workDir);
+
+  // 将新安装的 host 写入 enabledHosts，确保后续 init / sync 可见
+  const newHosts = hosts.filter((h) => !config.enabledHosts.includes(h));
+  if (newHosts.length > 0) {
+    await writeHarnessConfig(workDir, {
+      ...config,
+      enabledHosts: newHosts,
+    });
+  }
+
   // 加载 v3-core 5 角色 manifest（缺失也不报错；host renderer 会回退到老的 2 角色）
   const agentManifests = await loadAgentManifests(workDir);
 

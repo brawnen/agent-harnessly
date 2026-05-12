@@ -26,17 +26,43 @@ node packages/cli/dist/index.js --version
 node packages/cli/dist/index.js host status --json
 ```
 
+## 打包
+
+不要直接执行 `pnpm --dir <pkg> publish`。在 pnpm 10.8.0 + npm 11.3.0 下，这条命令会触发 npm `EUSAGE`。
+
+也不要直接在包目录执行 `npm publish`：npm 生成的包会保留 `workspace:*` 依赖，发布后消费者安装会失败。
+
+正确做法是先用 `pnpm pack` 生成 tarball。pnpm 会把 `workspace:*` 依赖改写成当前版本号。
+
+```bash
+mkdir -p /tmp/harnessly-release
+pnpm --dir packages/shared pack --pack-destination /tmp/harnessly-release
+pnpm --dir packages/hosts/shared pack --pack-destination /tmp/harnessly-release
+pnpm --dir packages/core pack --pack-destination /tmp/harnessly-release
+pnpm --dir packages/hosts/codex pack --pack-destination /tmp/harnessly-release
+pnpm --dir packages/hosts/claude-code pack --pack-destination /tmp/harnessly-release
+pnpm --dir packages/cli pack --pack-destination /tmp/harnessly-release
+```
+
+发布前抽查依赖是否已被改写：
+
+```bash
+tar -xOf /tmp/harnessly-release/brawnen-harnessly-core-0.1.0-alpha.0.tgz package/package.json
+```
+
+输出中不应出现 `workspace:*`。
+
 ## 发布顺序
 
 内部包先发布，CLI 最后发布。
 
 ```bash
-pnpm --dir packages/shared publish --access public --tag alpha
-pnpm --dir packages/hosts/shared publish --access public --tag alpha
-pnpm --dir packages/core publish --access public --tag alpha
-pnpm --dir packages/hosts/codex publish --access public --tag alpha
-pnpm --dir packages/hosts/claude-code publish --access public --tag alpha
-pnpm --dir packages/cli publish --access public --tag alpha
+npm publish /tmp/harnessly-release/brawnen-harnessly-shared-0.1.0-alpha.0.tgz --access public --tag alpha
+npm publish /tmp/harnessly-release/brawnen-harnessly-host-shared-0.1.0-alpha.0.tgz --access public --tag alpha
+npm publish /tmp/harnessly-release/brawnen-harnessly-core-0.1.0-alpha.0.tgz --access public --tag alpha
+npm publish /tmp/harnessly-release/brawnen-harnessly-host-codex-0.1.0-alpha.0.tgz --access public --tag alpha
+npm publish /tmp/harnessly-release/brawnen-harnessly-host-claude-code-0.1.0-alpha.0.tgz --access public --tag alpha
+npm publish /tmp/harnessly-release/brawnen-harnessly-0.1.0-alpha.0.tgz --access public --tag alpha
 ```
 
 ## 安装验证

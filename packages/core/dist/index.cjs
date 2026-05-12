@@ -295,8 +295,26 @@ async function loadHarnessConfig(workDir) {
   const configText = await (0, import_promises2.readFile)(getHarnessPaths(workDir).configFile, "utf8");
   return parseHarnessConfig(configText);
 }
+function isMissingFileError(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
 async function writeHarnessConfig(workDir, config, force = false) {
-  return writeFileIfChanged(getHarnessPaths(workDir).configFile, serializeHarnessConfig(config), force);
+  const configPath = getHarnessPaths(workDir).configFile;
+  let mergedConfig = config;
+  let didMerge = false;
+  try {
+    const existing = await loadHarnessConfig(workDir);
+    const mergedHosts = [.../* @__PURE__ */ new Set([...existing.enabledHosts, ...config.enabledHosts])];
+    if (mergedHosts.length > existing.enabledHosts.length) {
+      mergedConfig = { ...existing, ...config, enabledHosts: mergedHosts };
+      didMerge = true;
+    } else if (!force) {
+      return "skipped";
+    }
+  } catch (error) {
+    if (!isMissingFileError(error)) throw error;
+  }
+  return writeFileIfChanged(configPath, serializeHarnessConfig(mergedConfig), force || didMerge);
 }
 
 // src/agent.ts
@@ -476,14 +494,14 @@ function getDefaultAgentManifest(role) {
     toolWhitelist: [...source.toolWhitelist]
   };
 }
-function isMissingFileError(error) {
+function isMissingFileError2(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function readFileIfExists(filePath) {
   try {
     return await (0, import_promises3.readFile)(filePath, "utf8");
   } catch (error) {
-    if (isMissingFileError(error)) {
+    if (isMissingFileError2(error)) {
       return null;
     }
     throw error;
@@ -518,7 +536,7 @@ async function listAgentFiles(workDir) {
   try {
     entries = await (0, import_promises3.readdir)(paths.agentsDir, { withFileTypes: true });
   } catch (error) {
-    if (isMissingFileError(error)) {
+    if (isMissingFileError2(error)) {
       return [];
     }
     throw error;
@@ -629,7 +647,7 @@ function getFeedbackPoolPath(workDir) {
 function getFeedbackHistoryPath(workDir) {
   return import_node_path4.default.join(getHarnessPaths(workDir).harnessDir, "feedback-history.md");
 }
-function isMissingFileError2(error) {
+function isMissingFileError3(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function buildFeedbackEntry(ctx, report) {
@@ -671,7 +689,7 @@ async function loadFeedbackPool(workDir) {
   try {
     text = await (0, import_promises4.readFile)(filePath, "utf8");
   } catch (error) {
-    if (isMissingFileError2(error)) {
+    if (isMissingFileError3(error)) {
       return [];
     }
     throw error;
@@ -917,7 +935,7 @@ async function readJson(filePath) {
   const text = await (0, import_promises5.readFile)(filePath, "utf8");
   return JSON.parse(text);
 }
-function isMissingFileError3(error) {
+function isMissingFileError4(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function ownerForStage(stage) {
@@ -1097,7 +1115,7 @@ var TaskManager = class {
     const filePath = import_node_path5.default.join(ctx.taskDir, "commit-summary.md");
     try {
       const existing = await (0, import_promises5.readFile)(filePath, "utf8").catch(
-        (error) => isMissingFileError3(error) ? "" : Promise.reject(error)
+        (error) => isMissingFileError4(error) ? "" : Promise.reject(error)
       );
       const section = `${heading}
 ${content}
@@ -1135,7 +1153,7 @@ ${content}
     try {
       return (0, import_harnessly_shared4.parseTaskReport)(await (0, import_promises5.readFile)(this.getReportFile(taskDir), "utf8"));
     } catch (error) {
-      if (isMissingFileError3(error)) {
+      if (isMissingFileError4(error)) {
         return null;
       }
       if (error instanceof Error) {
@@ -1152,7 +1170,7 @@ ${content}
       meta = await readJson(this.getMetaFile(taskDir));
       state = await readJson(this.getStateFile(taskDir));
     } catch (error) {
-      if (isMissingFileError3(error)) {
+      if (isMissingFileError4(error)) {
         throw new Error(`task ${taskId} \u4E0D\u5B58\u5728\u3002\u53EF\u5148\u6267\u884C harnessly list \u67E5\u770B\u5DF2\u6709\u4EFB\u52A1\u3002`);
       }
       throw error;
@@ -1169,7 +1187,7 @@ ${content}
     try {
       ctx.contract = (0, import_harnessly_shared4.parseContract)(await (0, import_promises5.readFile)(this.getContractFile(taskDir), "utf8"));
     } catch (error) {
-      if (!isMissingFileError3(error)) {
+      if (!isMissingFileError4(error)) {
         throw error;
       }
     }
@@ -1195,7 +1213,7 @@ ${content}
     try {
       entries = await (0, import_promises5.readdir)(tasksDir, { withFileTypes: true });
     } catch (error) {
-      if (isMissingFileError3(error)) {
+      if (isMissingFileError4(error)) {
         return [];
       }
       throw error;
@@ -1229,7 +1247,7 @@ ${content}
 var DEFAULT_TOPIC = "tasks";
 var AUTO_START = "<!-- harness:auto-start -->";
 var AUTO_END = "<!-- harness:auto-end -->";
-function isMissingFileError4(error) {
+function isMissingFileError5(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function fileExists2(filePath) {
@@ -1237,7 +1255,7 @@ async function fileExists2(filePath) {
     await (0, import_promises6.access)(filePath);
     return true;
   } catch (error) {
-    if (isMissingFileError4(error)) return false;
+    if (isMissingFileError5(error)) return false;
     throw error;
   }
 }
@@ -1249,7 +1267,7 @@ function pickFilesByKind(kind) {
 }
 function readTaskReportSafe(filePath) {
   return (0, import_promises6.readFile)(filePath, "utf8").then((text) => (0, import_harnessly_shared5.parseTaskReport)(text)).catch((error) => {
-    if (isMissingFileError4(error)) return null;
+    if (isMissingFileError5(error)) return null;
     return null;
   });
 }
@@ -1261,7 +1279,7 @@ async function loadHarnessMeta(topicDir) {
     const text = await (0, import_promises6.readFile)(getHarnessMetaPath(topicDir), "utf8");
     return import_harnessly_shared5.harnessMetaFileSchema.parse(JSON.parse(text));
   } catch (error) {
-    if (isMissingFileError4(error)) return null;
+    if (isMissingFileError5(error)) return null;
     return null;
   }
 }
@@ -1368,7 +1386,7 @@ async function writeReadme(topicDir, topic, meta) {
 ${existing}`;
     }
   } catch (error) {
-    if (!isMissingFileError4(error)) throw error;
+    if (!isMissingFileError5(error)) throw error;
     existingBefore = `${AUTO_START}`;
     existingAfter = `
 ${AUTO_END}`;
@@ -1442,7 +1460,7 @@ async function listDirs(dirPath) {
     const entries = await readdir3(dirPath, { withFileTypes: true });
     return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   } catch (error) {
-    if (isMissingFileError4(error)) return [];
+    if (isMissingFileError5(error)) return [];
     throw error;
   }
 }
@@ -1479,7 +1497,7 @@ async function showArchiveTopic(workDir, topic) {
   try {
     readme = await (0, import_promises6.readFile)(import_node_path6.default.join(topicDir, "README.md"), "utf8");
   } catch (error) {
-    if (!isMissingFileError4(error)) throw error;
+    if (!isMissingFileError5(error)) throw error;
   }
   const allFiles = /* @__PURE__ */ new Set();
   for (const task of meta.source_tasks) {
@@ -1568,7 +1586,7 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
   const reportFile = import_node_path6.default.join(ctx.taskDir, "report.json");
   const report = await readTaskReportSafe(reportFile);
   const previousReadme = await (0, import_promises6.readFile)(import_node_path6.default.join(targets.topicDir, "README.md"), "utf8").catch(
-    (error) => isMissingFileError4(error) ? null : Promise.reject(error)
+    (error) => isMissingFileError5(error) ? null : Promise.reject(error)
   );
   await (0, import_promises6.writeFile)(import_node_path6.default.join(targets.topicDir, "README.md"), [
     `# Task Archive: ${ctx.goal}`,
@@ -1597,7 +1615,7 @@ async function archiveTaskArtifacts(workDir, taskId, kind, options = {}) {
   });
   const metadataPath = import_node_path6.default.join(targets.topicDir, `${taskId}.promotion.json`);
   const previousMetadata = await (0, import_promises6.readFile)(metadataPath, "utf8").catch(
-    (error) => isMissingFileError4(error) ? null : Promise.reject(error)
+    (error) => isMissingFileError5(error) ? null : Promise.reject(error)
   );
   await (0, import_promises6.writeFile)(
     metadataPath,
@@ -1624,7 +1642,7 @@ async function exists(filePath) {
     return false;
   }
 }
-function isMissingFileError5(error) {
+function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 var REQUIRED_TASK_ARTIFACTS = [
@@ -1698,7 +1716,7 @@ async function checkWritePermission(workDir, filePath, activeTaskId) {
     const state = JSON.parse(stateText);
     currentStage = state.currentStage;
   } catch (error) {
-    if (!isMissingFileError5(error)) throw error;
+    if (!isMissingFileError6(error)) throw error;
     return { allowed: true, reason: "state.json \u4E0D\u5B58\u5728\uFF0C\u653E\u884C", file: relative };
   }
   if (!currentStage || resolvedActiveTaskId !== taskId) {
@@ -1720,7 +1738,7 @@ async function readActiveTaskId(workDir) {
     const text = await (0, import_promises7.readFile)(import_node_path7.default.join(workDir, ".harness", "active-task.txt"), "utf8");
     return text.trim() || void 0;
   } catch (error) {
-    if (isMissingFileError5(error)) return void 0;
+    if (isMissingFileError6(error)) return void 0;
     throw error;
   }
 }
@@ -1985,7 +2003,7 @@ var import_node_util = require("util");
 var import_node_path8 = __toESM(require("path"), 1);
 var import_harnessly_shared7 = require("@brawnen/harnessly-shared");
 var execAsync = (0, import_node_util.promisify)(import_node_child_process.exec);
-function isMissingFileError6(error) {
+function isMissingFileError7(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function fileExists3(filePath) {
@@ -1993,7 +2011,7 @@ async function fileExists3(filePath) {
     await (0, import_promises8.access)(filePath);
     return true;
   } catch (error) {
-    if (isMissingFileError6(error)) return false;
+    if (isMissingFileError7(error)) return false;
     throw error;
   }
 }
@@ -2275,7 +2293,7 @@ function getTaskEvidenceDir(taskDir) {
 function getTaskEvidencePath(taskDir, kind) {
   return import_node_path10.default.join(getTaskEvidenceDir(taskDir), `${kind}.json`);
 }
-function isMissingFileError7(error) {
+function isMissingFileError8(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function buildEvidenceBaseline(evidence) {
@@ -2337,7 +2355,7 @@ async function loadEvidenceBaseline(workDir) {
   try {
     text = await (0, import_promises10.readFile)(filePath, "utf8");
   } catch (error) {
-    if (isMissingFileError7(error)) return null;
+    if (isMissingFileError8(error)) return null;
     throw error;
   }
   try {
@@ -2794,7 +2812,7 @@ var import_promises12 = require("fs/promises");
 var import_node_path12 = __toESM(require("path"), 1);
 var import_node_util5 = require("util");
 var execAsync5 = (0, import_node_util5.promisify)(import_node_child_process5.exec);
-function isMissingFileError8(error) {
+function isMissingFileError9(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 async function loadReviewAgentsConfig(workDir) {
@@ -2826,7 +2844,7 @@ async function loadReviewAgentsConfig(workDir) {
     if (current?.name) agents.push(current);
     return { review_agents: agents };
   } catch (error) {
-    if (isMissingFileError8(error)) return null;
+    if (isMissingFileError9(error)) return null;
     throw error;
   }
 }
@@ -2900,7 +2918,7 @@ async function readActiveTaskId2(workDir) {
     const text = await (0, import_promises12.readFile)(getHarnessPaths(workDir).activeTaskFile, "utf8");
     return text.trim() || void 0;
   } catch (error) {
-    if (isMissingFileError8(error)) return void 0;
+    if (isMissingFileError9(error)) return void 0;
     throw error;
   }
 }
@@ -2926,7 +2944,7 @@ function renderResidentReviewFromFindings(findings, trigger, agentsSpawned) {
 }
 async function renderResidentReview(workDir, findings) {
   const configText = await (0, import_promises12.readFile)(getHarnessPaths(workDir).reviewAgentsFile, "utf8").catch(
-    (error) => isMissingFileError8(error) ? null : Promise.reject(error)
+    (error) => isMissingFileError9(error) ? null : Promise.reject(error)
   );
   const active = Boolean(configText?.includes("review_agents:"));
   const failed = findings.filter((finding) => finding.status === "failed");
@@ -3008,7 +3026,7 @@ function runReviewStage(changedFiles) {
 // src/structure-check.ts
 var import_promises13 = require("fs/promises");
 var import_node_path13 = __toESM(require("path"), 1);
-function isMissingFileError9(error) {
+function isMissingFileError10(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function parseStructureRules(text) {
@@ -3045,7 +3063,7 @@ async function runStructureCheck(workDir, changedFiles) {
   try {
     text = await (0, import_promises13.readFile)(rulesPath, "utf8");
   } catch (error) {
-    if (isMissingFileError9(error)) {
+    if (isMissingFileError10(error)) {
       return [
         {
           name: "structure.rules",

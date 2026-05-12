@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { fileURLToPath } from 'node:url';
-
 import { getCorePackageInfo } from '@brawnen/harnessly-core';
 
 import { runCli } from './run-cli';
@@ -40,19 +38,8 @@ function formatCliError(error: unknown): string {
   return String(error);
 }
 
-function isDirectExecution(): boolean {
-  const entryPath = process.argv[1];
-  if (!entryPath) {
-    return false;
-  }
-
-  return fileURLToPath(import.meta.url) === entryPath;
-}
-
-if (isDirectExecution()) {
-  runCli(process.argv.slice(2)).catch((error: unknown) => {
-    const message = formatCliError(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runCli(process.argv.slice(2)).catch((error: unknown) => {
+  const message = formatCliError(error);
+  process.stderr.write(`${message}\n`);
+  process.exitCode = 1;
+});
