@@ -67,9 +67,9 @@ agent-harnessly/
 
 ## 关键设计文档
 
-- **产品设计**：`docs/design/agent-harness-product-design-v2.md`
-- **技术实现方案**：`docs/design/technical-implementation-plan.md`
-- **评审报告**：`docs/review/technical-implementation-plan-review.md`
+- **产品设计 (v3-core)**：`docs/design/agent-harness-product-design-v3-core.md`
+- **规范**：`docs/spec/v3-core.md`（中文：`v3-core.zh-CN.md`）
+- **历史文档归档**：`docs/archive/README.md`
 
 修改核心架构前，必须先阅读以上文档。
 

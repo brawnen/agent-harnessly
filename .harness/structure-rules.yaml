@@ -1,0 +1,9 @@
+file_length:
+  max: 500
+  exclude:
+    - dist/
+    - node_modules/
+unique_implementations: []
+package_dependencies:
+  forbid: []
+  fix_hint: 保持包边界清晰，避免反向依赖

@@ -1,0 +1,8 @@
+name: build
+language: node
+command: npm run build
+success_exit_code: 0
+env_required:
+detail_on_pass: build 通过
+detail_on_fail_template: build 失败：{stderr}
+fix_hint_template: 修复 build 失败后重跑命令：npm run build

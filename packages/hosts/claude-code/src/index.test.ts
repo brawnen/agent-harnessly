@@ -27,9 +27,11 @@ function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManif
   };
 }
 
+const TEST_WORK_DIR = '/tmp/test-project';
+
 describe('renderClaudeCodeManagedFiles', () => {
   it('should render hooks pointing to Node.js bridge scripts', () => {
-    const settings = renderClaudeCodeSettings(createHostManifest('claude-code', 'harnessly-local'));
+    const settings = renderClaudeCodeSettings(createHostManifest('claude-code', 'harnessly-local'), TEST_WORK_DIR);
 
     expect(settings).toContain('"SessionStart"');
     expect(settings).toContain('"UserPromptSubmit"');
@@ -42,6 +44,7 @@ describe('renderClaudeCodeManagedFiles', () => {
   it('should NOT render legacy harness-planner / harness-evaluator files (v3-core only)', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
+      TEST_WORK_DIR,
       {
         agentManifests: [makeManifest('requirement', { stage: 'spec' })],
       },
@@ -54,6 +57,7 @@ describe('renderClaudeCodeManagedFiles', () => {
   it('should render only enabled v3-core 5-role sub-agents', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
+      TEST_WORK_DIR,
       {
         agentManifests: [
           makeManifest('requirement', { stage: 'spec' }),
@@ -77,6 +81,7 @@ describe('renderClaudeCodeManagedFiles', () => {
   it('renders the configured model from manifest into frontmatter', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
+      TEST_WORK_DIR,
       {
         agentManifests: [
           makeManifest('reviewer', { models: { 'claude-code': 'opus' } }),
@@ -90,6 +95,7 @@ describe('renderClaudeCodeManagedFiles', () => {
   it('produces no agent files when agentManifests is omitted', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
+      TEST_WORK_DIR,
     );
 
     // 没传 manifest 也没有任何复合别名兜底（v3-core 不再生成）
@@ -150,7 +156,7 @@ describe('Claude Code hook bridge scripts', () => {
   });
 
   it('should include all 4 hook scripts in managed files', () => {
-    const files = renderClaudeCodeManagedFiles(createHostManifest('claude-code', 'harnessly-local'));
+    const files = renderClaudeCodeManagedFiles(createHostManifest('claude-code', 'harnessly-local'), TEST_WORK_DIR);
 
     expect(files['.harness/hosts/claude-code/hooks/session_start.js']).toBeTruthy();
     expect(files['.harness/hosts/claude-code/hooks/user_prompt_submit.js']).toBeTruthy();

@@ -318,8 +318,8 @@ function renderClaudeCodePreToolUseHook() {
     ""
   ].join("\n");
 }
-function renderClaudeCodeSettings(_manifest) {
-  const repoRoot = "$(git rev-parse --show-toplevel)";
+function renderClaudeCodeSettings(_manifest, workDir) {
+  const repoRoot = (0, import_harnessly_host_shared.resolveRepoRoot)(workDir);
   return `${JSON.stringify(
     {
       hooks: {
@@ -374,10 +374,10 @@ function renderClaudeCodeSettings(_manifest) {
   )}
 `;
 }
-function renderClaudeCodeManagedFiles(manifest, options = {}) {
+function renderClaudeCodeManagedFiles(manifest, workDir, options = {}) {
   const agentManifests = options.agentManifests ?? [];
   const files = {
-    ".claude/settings.json": renderClaudeCodeSettings(manifest),
+    ".claude/settings.json": renderClaudeCodeSettings(manifest, workDir),
     ".harness/hosts/claude-code/hooks/session_start.js": renderClaudeCodeSessionStartHook(),
     ".harness/hosts/claude-code/hooks/user_prompt_submit.js": renderClaudeCodeUserPromptSubmitHook(),
     ".harness/hosts/claude-code/hooks/stop.js": renderClaudeCodeStopHook(),

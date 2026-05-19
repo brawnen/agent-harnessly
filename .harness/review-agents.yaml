@@ -1,0 +1,7 @@
+review_agents:
+  - name: reliability
+    triggers: [pre_merge]
+    model: gpt-5.5
+    blocking_severity: P0
+    prompt: |
+      检查可靠性、回归风险和证据缺口。

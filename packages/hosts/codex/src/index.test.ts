@@ -24,13 +24,15 @@ function makeManifest(role: AgentManifest['role'], overrides: Partial<AgentManif
   };
 }
 
+const TEST_WORK_DIR = '/tmp/test-project';
+
 describe('codex host renderer', () => {
   it('should render config.toml with hooks path', () => {
     expect(renderCodexConfig()).toContain('codex_hooks = true');
   });
 
   it('should render UserPromptSubmit by default for host-first intake', () => {
-    const hooks = renderCodexHooks(createHostManifest('codex', 'harnessly-local'));
+    const hooks = renderCodexHooks(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR);
 
     expect(hooks).toContain('"SessionStart"');
     expect(hooks).toContain('"Stop"');
@@ -41,7 +43,7 @@ describe('codex host renderer', () => {
   });
 
   it('should omit UserPromptSubmit only when explicitly disabled', () => {
-    const hooks = renderCodexHooks(createHostManifest('codex', 'harnessly-local'), {
+    const hooks = renderCodexHooks(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR, {
       userPromptSubmitHookEnabled: false,
     });
 
@@ -50,7 +52,7 @@ describe('codex host renderer', () => {
   });
 
   it('should render managed hook runtime files', () => {
-    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'));
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR);
 
     expect(files['.harness/hosts/codex/hooks/user_prompt_submit.js']).toContain(
       'HARNESSLY_HOOK_PROMPT',
@@ -67,7 +69,7 @@ describe('codex host renderer', () => {
   });
 
   it('should NOT render legacy harness-planner / harness-evaluator files (v3-core only)', () => {
-    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR, {
       agentManifests: [makeManifest('requirement', { stage: 'spec' })],
     });
 
@@ -76,7 +78,7 @@ describe('codex host renderer', () => {
   });
 
   it('should render only enabled v3-core 5-role sub-agents', () => {
-    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR, {
       agentManifests: [
         makeManifest('requirement', { stage: 'spec' }),
         makeManifest('designer', { stage: 'design' }),
@@ -96,7 +98,7 @@ describe('codex host renderer', () => {
   });
 
   it('renders the configured codex model from manifest', () => {
-    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), {
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR, {
       agentManifests: [
         makeManifest('reviewer', { models: { codex: 'gpt-5.5' } }),
       ],
@@ -106,7 +108,7 @@ describe('codex host renderer', () => {
   });
 
   it('produces no agent files when agentManifests is omitted', () => {
-    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'));
+    const files = renderCodexManagedFiles(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR);
 
     const agentFiles = Object.keys(files).filter((p) => p.startsWith('.codex/agents/'));
     expect(agentFiles).toEqual([]);

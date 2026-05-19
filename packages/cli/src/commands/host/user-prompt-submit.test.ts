@@ -232,7 +232,8 @@ describe('host user-prompt-submit command', () => {
 
     expect(payload.action).toBe('resume_task');
     expect(payload.activeStage).toBe('design');
-    expect(payload.recommendedAgent).toBe('harness-designer');
+    // designer 默认禁用，design 阶段由主 agent 自行处理
+    expect(payload.recommendedAgent).toBeNull();
   });
 
   it('should return null recommendedAgent for resume_task at execute stage', async () => {

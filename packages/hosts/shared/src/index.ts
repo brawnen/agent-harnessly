@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process';
+
 import {
   HARNESSLY_VERSION,
   type AgentManifest,
@@ -10,6 +12,19 @@ import {
   parseStringList,
   serializeFlatYaml,
 } from '@brawnen/harnessly-shared';
+
+/** 在生成期解析项目根路径：优先 git root，非 git 仓库回退到 workDir */
+export function resolveRepoRoot(workDir: string): string {
+  try {
+    return execSync('git rev-parse --show-toplevel', {
+      cwd: workDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return workDir;
+  }
+}
 
 export function getRepoLocalShellPaths(host: HostName): string[] {
   switch (host) {

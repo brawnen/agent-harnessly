@@ -905,7 +905,7 @@ var DEFAULT_AGENT_MANIFESTS = {
     displayName: "Harness Designer",
     description: "\u5728 DESIGN \u9636\u6BB5\u57FA\u4E8E contract \u5217\u5B9E\u65BD\u6B65\u9AA4\u3001\u4F9D\u8D56\u4E0E\u98CE\u9669",
     stage: "design",
-    enabled: true,
+    enabled: false,
     planModeEnabled: false,
     models: {
       "claude-code": "sonnet",
@@ -997,7 +997,7 @@ var DEFAULT_AGENT_MANIFESTS = {
     displayName: "Harness Tester",
     description: "\u5728 TEST \u9636\u6BB5\u8DD1 required checks \u4E0E acceptance \u6821\u9A8C",
     stage: "test",
-    enabled: true,
+    enabled: false,
     planModeEnabled: false,
     models: {
       "claude-code": "sonnet",
@@ -4162,6 +4162,18 @@ import { mkdir as mkdir11, readFile as readFile13, writeFile as writeFile9 } fro
 import path17 from "path";
 
 // ../hosts/shared/dist/index.js
+import { execSync } from "child_process";
+function resolveRepoRoot(workDir) {
+  try {
+    return execSync("git rev-parse --show-toplevel", {
+      cwd: workDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return workDir;
+  }
+}
 function getRepoLocalShellPaths(host) {
   switch (host) {
     case "claude-code":
@@ -4558,8 +4570,8 @@ function renderClaudeCodePreToolUseHook() {
     ""
   ].join("\n");
 }
-function renderClaudeCodeSettings(_manifest) {
-  const repoRoot = "$(git rev-parse --show-toplevel)";
+function renderClaudeCodeSettings(_manifest, workDir) {
+  const repoRoot = resolveRepoRoot(workDir);
   return `${JSON.stringify(
     {
       hooks: {
@@ -4614,10 +4626,10 @@ function renderClaudeCodeSettings(_manifest) {
   )}
 `;
 }
-function renderClaudeCodeManagedFiles(manifest, options = {}) {
+function renderClaudeCodeManagedFiles(manifest, workDir, options = {}) {
   const agentManifests = options.agentManifests ?? [];
   const files = {
-    ".claude/settings.json": renderClaudeCodeSettings(manifest),
+    ".claude/settings.json": renderClaudeCodeSettings(manifest, workDir),
     ".harness/hosts/claude-code/hooks/session_start.js": renderClaudeCodeSessionStartHook(),
     ".harness/hosts/claude-code/hooks/user_prompt_submit.js": renderClaudeCodeUserPromptSubmitHook(),
     ".harness/hosts/claude-code/hooks/stop.js": renderClaudeCodeStopHook(),
@@ -4649,7 +4661,8 @@ function renderHookCommand(command) {
     }
   ];
 }
-function renderCodexHooks(manifest, options = { userPromptSubmitHookEnabled: true }) {
+function renderCodexHooks(manifest, workDir, options = { userPromptSubmitHookEnabled: true }) {
+  const repoRoot = resolveRepoRoot(workDir);
   const hooks = {
     SessionStart: [
       {
@@ -4657,18 +4670,18 @@ function renderCodexHooks(manifest, options = { userPromptSubmitHookEnabled: tru
         hooks: [
           {
             type: "command",
-            command: 'node "$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/session_start.js" || echo "{}"'
+            command: `node "${repoRoot}/.harness/hosts/codex/hooks/session_start.js" || echo "{}"`
           }
         ]
       }
     ],
     Stop: renderHookCommand(
-      'node "$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/stop.js" || echo "{}"'
+      `node "${repoRoot}/.harness/hosts/codex/hooks/stop.js" || echo "{}"`
     )
   };
   if (options.userPromptSubmitHookEnabled ?? true) {
     hooks.UserPromptSubmit = renderHookCommand(
-      'node "$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/user_prompt_submit.js" || echo "{}"'
+      `node "${repoRoot}/.harness/hosts/codex/hooks/user_prompt_submit.js" || echo "{}"`
     );
   }
   return `${JSON.stringify(
@@ -4948,12 +4961,12 @@ function renderCodexStopHook() {
     ""
   ].join("\n");
 }
-function renderCodexManagedFiles(manifest, options = {}) {
+function renderCodexManagedFiles(manifest, workDir, options = {}) {
   const userPromptSubmitHookEnabled = options.userPromptSubmitHookEnabled ?? true;
   const agentManifests = options.agentManifests ?? [];
   const files = {
     ".codex/config.toml": renderCodexConfig(),
-    ".codex/hooks.json": renderCodexHooks(manifest, { userPromptSubmitHookEnabled }),
+    ".codex/hooks.json": renderCodexHooks(manifest, workDir, { userPromptSubmitHookEnabled }),
     ".harness/hosts/codex/hooks/session_start.js": renderCodexSessionStartHook(),
     ".harness/hosts/codex/hooks/user_prompt_submit.js": renderCodexUserPromptSubmitHook(),
     ".harness/hosts/codex/hooks/stop.js": renderCodexStopHook(),
@@ -5033,12 +5046,12 @@ async function loadEnabledHosts(workDir, requestedHost) {
   }
   return [config.defaultHost];
 }
-function renderRepoLocalShell(manifest, config, agentManifests = []) {
+function renderRepoLocalShell(manifest, workDir, config, agentManifests = []) {
   switch (manifest.host) {
     case "claude-code":
-      return renderClaudeCodeManagedFiles(manifest, { agentManifests });
+      return renderClaudeCodeManagedFiles(manifest, workDir, { agentManifests });
     case "codex":
-      return renderCodexManagedFiles(manifest, {
+      return renderCodexManagedFiles(manifest, workDir, {
         userPromptSubmitHookEnabled: config.codexUserPromptSubmitHookEnabled,
         agentManifests
       });
@@ -5060,7 +5073,7 @@ async function installHostShells(workDir, requestedHost) {
   const agentManifests = await loadAgentManifests(workDir);
   for (const host of hosts) {
     const manifest = await ensureHostManifest(workDir, host);
-    const files = renderRepoLocalShell(manifest, config, agentManifests);
+    const files = renderRepoLocalShell(manifest, workDir, config, agentManifests);
     for (const [relativePath, content] of Object.entries(files)) {
       const absolutePath = path17.join(workDir, relativePath);
       await mkdir11(path17.dirname(absolutePath), { recursive: true });
@@ -5087,7 +5100,7 @@ async function collectHostStatus(workDir) {
       continue;
     }
     const manifest = parseHostManifest(manifestText);
-    const expectedFiles = renderRepoLocalShell(manifest, config, agentManifests);
+    const expectedFiles = renderRepoLocalShell(manifest, workDir, config, agentManifests);
     let shellStatus = "installed";
     for (const [relativePath, expectedContent] of Object.entries(expectedFiles)) {
       const actual = await readFileIfExists2(path17.join(workDir, relativePath));
@@ -5770,6 +5783,9 @@ function isHostInternalPrompt(prompt) {
 function containsAny(prompt, patterns) {
   return patterns.some((pattern) => pattern.test(prompt));
 }
+function isExplicitNewTask(prompt) {
+  return /(新建.*任务|开个新|独立任务|创建.*任务|新需求|另起.*任务|不.*继续)/i.test(prompt);
+}
 function detectChangeKind(prompt) {
   const normalized = prompt.trim();
   if (containsAny(normalized, [/(修复|修一下|bug|报错|失败|异常|不对|不能|无法|fix)/i])) {
@@ -5829,22 +5845,32 @@ function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
       confidence: 1
     };
   }
-  if (hasActiveTask && /(继续|resume|接着|延续)/i.test(prompt)) {
+  if (hasActiveTask) {
+    if (isExplicitNewTask(prompt)) {
+      const taskKind2 = detectChangeKind(prompt);
+      return {
+        action: allowFallbackCreate ? "create_task" : "delegate_to_planner",
+        reason: "explicit_new_task",
+        taskKind: taskKind2 ?? "code_change",
+        risk: taskKind2 ? detectRisk(prompt, taskKind2) : "medium",
+        confidence: 0.85
+      };
+    }
+    if (isQuestionOnly(prompt)) {
+      return {
+        action: "chat",
+        reason: "matched_question_intent",
+        taskKind: "question",
+        risk: "low",
+        confidence: 0.95
+      };
+    }
     return {
       action: "resume_task",
       reason: "resume_active_task",
       taskKind: "resume",
       risk: "low",
-      confidence: 1
-    };
-  }
-  if (hasActiveTask && /(当前任务|这个任务|继续修复|继续做)/i.test(prompt)) {
-    return {
-      action: "resume_task",
-      reason: "resume_active_task",
-      taskKind: "resume",
-      risk: "low",
-      confidence: 1
+      confidence: 0.85
     };
   }
   if (isQuestionOnly(prompt)) {

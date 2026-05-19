@@ -167,8 +167,8 @@ describe('host completion-gate command', () => {
     };
 
     expect(payload.pass).toBe(false);
-    // v3-core：按 lastFailureStage=test 路由
-    expect(payload.recommendedAgent).toBe('harness-tester');
+    // v3-core：tester 默认禁用，fallback 按 reviewer > tester > … 顺序回退到 reviewer
+    expect(payload.recommendedAgent).toBe('harness-reviewer');
     expect(payload.activeStage).toBe('test');
     expect(payload.lastFailureStage).toBe('test');
   });

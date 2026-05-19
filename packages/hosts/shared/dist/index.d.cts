@@ -1,5 +1,7 @@
 import { HostName, HostManifest, HostLifecycleCommands, AgentRole, AgentManifest } from '@brawnen/harnessly-shared';
 
+/** 在生成期解析项目根路径：优先 git root，非 git 仓库回退到 workDir */
+declare function resolveRepoRoot(workDir: string): string;
 declare function getRepoLocalShellPaths(host: HostName): string[];
 /**
  * 由 v3-core 5 角色 manifest 派生出的 host-specific sub-agent 文件路径。
@@ -35,4 +37,4 @@ declare function getHostManifestFilename(host: HostName): string;
 declare function serializeHostManifest(manifest: HostManifest): string;
 declare function parseHostManifest(text: string): HostManifest;
 
-export { createHostManifest, createLifecycleCommands, getHostManifestFilename, getRepoLocalShellPaths, getRoleAgentFilePath, parseHostManifest, renderClaudeCodeSubagentFile, renderCodexSubagentFile, serializeHostManifest };
+export { createHostManifest, createLifecycleCommands, getHostManifestFilename, getRepoLocalShellPaths, getRoleAgentFilePath, parseHostManifest, renderClaudeCodeSubagentFile, renderCodexSubagentFile, resolveRepoRoot, serializeHostManifest };

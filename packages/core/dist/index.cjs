@@ -368,7 +368,7 @@ var DEFAULT_AGENT_MANIFESTS = {
     displayName: "Harness Designer",
     description: "\u5728 DESIGN \u9636\u6BB5\u57FA\u4E8E contract \u5217\u5B9E\u65BD\u6B65\u9AA4\u3001\u4F9D\u8D56\u4E0E\u98CE\u9669",
     stage: "design",
-    enabled: true,
+    enabled: false,
     planModeEnabled: false,
     models: {
       "claude-code": "sonnet",
@@ -460,7 +460,7 @@ var DEFAULT_AGENT_MANIFESTS = {
     displayName: "Harness Tester",
     description: "\u5728 TEST \u9636\u6BB5\u8DD1 required checks \u4E0E acceptance \u6821\u9A8C",
     stage: "test",
-    enabled: true,
+    enabled: false,
     planModeEnabled: false,
     models: {
       "claude-code": "sonnet",

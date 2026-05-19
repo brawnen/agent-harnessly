@@ -12,11 +12,11 @@ interface CodexManagedFilesOptions extends CodexHookRenderOptions {
 }
 declare function getCodexHostManifest(): HostManifest;
 declare function renderCodexConfig(): string;
-declare function renderCodexHooks(manifest: HostManifest, options?: CodexHookRenderOptions): string;
+declare function renderCodexHooks(manifest: HostManifest, workDir: string, options?: CodexHookRenderOptions): string;
 declare function renderCodexHookIo(manifest: HostManifest): string;
 declare function renderCodexSessionStartHook(): string;
 declare function renderCodexUserPromptSubmitHook(): string;
 declare function renderCodexStopHook(): string;
-declare function renderCodexManagedFiles(manifest: HostManifest, options?: CodexManagedFilesOptions): Record<string, string>;
+declare function renderCodexManagedFiles(manifest: HostManifest, workDir: string, options?: CodexManagedFilesOptions): Record<string, string>;
 
 export { type CodexHookRenderOptions, type CodexManagedFilesOptions, getCodexHostManifest, renderCodexConfig, renderCodexHookIo, renderCodexHooks, renderCodexManagedFiles, renderCodexSessionStartHook, renderCodexStopHook, renderCodexUserPromptSubmitHook };

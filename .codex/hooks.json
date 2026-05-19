@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/session_start.js\" || echo \"{}\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/codex/hooks/session_start.js\" || echo \"{}\""
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/stop.js\" || echo \"{}\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/codex/hooks/stop.js\" || echo \"{}\""
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/user_prompt_submit.js\" || echo \"{}\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/codex/hooks/user_prompt_submit.js\" || echo \"{}\""
           }
         ]
       }

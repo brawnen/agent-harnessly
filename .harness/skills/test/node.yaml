@@ -1,0 +1,8 @@
+name: test
+language: node
+command: npm test
+success_exit_code: 0
+env_required:
+detail_on_pass: test 通过
+detail_on_fail_template: test 失败：{stderr}
+fix_hint_template: 修复 test 失败后重跑命令：npm test

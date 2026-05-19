@@ -78,7 +78,7 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     displayName: 'Harness Designer',
     description: '在 DESIGN 阶段基于 contract 列实施步骤、依赖与风险',
     stage: 'design',
-    enabled: true,
+    enabled: false,
     planModeEnabled: false,
     models: {
       'claude-code': 'sonnet',
@@ -173,7 +173,7 @@ const DEFAULT_AGENT_MANIFESTS: Record<AgentRole, AgentManifest> = {
     displayName: 'Harness Tester',
     description: '在 TEST 阶段跑 required checks 与 acceptance 校验',
     stage: 'test',
-    enabled: true,
+    enabled: false,
     planModeEnabled: false,
     models: {
       'claude-code': 'sonnet',

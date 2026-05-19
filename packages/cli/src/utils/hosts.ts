@@ -104,14 +104,15 @@ export async function loadEnabledHosts(workDir: string, requestedHost?: string):
 
 export function renderRepoLocalShell(
   manifest: HostManifest,
+  workDir: string,
   config: HarnessConfig,
   agentManifests: AgentManifest[] = [],
 ): Record<string, string> {
   switch (manifest.host) {
     case 'claude-code':
-      return renderClaudeCodeManagedFiles(manifest, { agentManifests });
+      return renderClaudeCodeManagedFiles(manifest, workDir, { agentManifests });
     case 'codex':
-      return renderCodexManagedFiles(manifest, {
+      return renderCodexManagedFiles(manifest, workDir, {
         userPromptSubmitHookEnabled: config.codexUserPromptSubmitHookEnabled,
         agentManifests,
       });
@@ -139,7 +140,7 @@ export async function installHostShells(workDir: string, requestedHost?: string)
 
   for (const host of hosts) {
     const manifest = await ensureHostManifest(workDir, host);
-    const files = renderRepoLocalShell(manifest, config, agentManifests);
+    const files = renderRepoLocalShell(manifest, workDir, config, agentManifests);
 
     for (const [relativePath, content] of Object.entries(files)) {
       const absolutePath = path.join(workDir, relativePath);
@@ -179,7 +180,7 @@ export async function collectHostStatus(workDir: string): Promise<HostStatusRow[
     }
 
     const manifest = parseHostManifest(manifestText);
-    const expectedFiles = renderRepoLocalShell(manifest, config, agentManifests);
+    const expectedFiles = renderRepoLocalShell(manifest, workDir, config, agentManifests);
     let shellStatus: HostStatusRow['shell'] = 'installed';
 
     for (const [relativePath, expectedContent] of Object.entries(expectedFiles)) {

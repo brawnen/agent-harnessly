@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/session_start.js\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/claude-code/hooks/session_start.js\""
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/user_prompt_submit.js\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/claude-code/hooks/user_prompt_submit.js\""
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/pre_tool_use.js\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/claude-code/hooks/pre_tool_use.js\""
           }
         ]
       }
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.harness/hosts/claude-code/hooks/stop.js\""
+            "command": "node \"/Users/lijianfeng/code/pp/agent-harnessly/.harness/hosts/claude-code/hooks/stop.js\""
           }
         ]
       }

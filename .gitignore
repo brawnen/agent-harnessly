@@ -8,3 +8,5 @@
 /.harness/tasks/
 /.harness/feedback-pool.jsonl
 /.harness/intake-last.json
+/.harness/intake-feedback.jsonl
+/.claude/worktrees/

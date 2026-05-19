@@ -247,13 +247,13 @@ describe('collectEnabledRoles', () => {
   it('collects only enabled=true roles from a manifests array', () => {
     const enabled = collectEnabledRoles(AGENT_ROLES.map((role) => getDefaultAgentManifest(role)));
 
-    // developer defaults to enabled=false
+    // developer/designer/tester 默认禁用：execute/design/test 阶段由主 agent 担任
     expect(enabled.has('requirement')).toBe(true);
-    expect(enabled.has('designer')).toBe(true);
+    expect(enabled.has('designer')).toBe(false);
     expect(enabled.has('reviewer')).toBe(true);
-    expect(enabled.has('tester')).toBe(true);
+    expect(enabled.has('tester')).toBe(false);
     expect(enabled.has('developer')).toBe(false);
-    expect(enabled.size).toBe(4);
+    expect(enabled.size).toBe(2);
   });
 
   it('returns an empty set when all manifests are disabled', () => {

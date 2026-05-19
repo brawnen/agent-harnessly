@@ -1,5 +1,5 @@
 // src/index.ts
-import { createHostManifest, renderCodexSubagentFile } from "@brawnen/harnessly-host-shared";
+import { createHostManifest, renderCodexSubagentFile, resolveRepoRoot } from "@brawnen/harnessly-host-shared";
 function getCodexHostManifest() {
   return createHostManifest("codex");
 }
@@ -18,7 +18,8 @@ function renderHookCommand(command) {
     }
   ];
 }
-function renderCodexHooks(manifest, options = { userPromptSubmitHookEnabled: true }) {
+function renderCodexHooks(manifest, workDir, options = { userPromptSubmitHookEnabled: true }) {
+  const repoRoot = resolveRepoRoot(workDir);
   const hooks = {
     SessionStart: [
       {
@@ -26,18 +27,18 @@ function renderCodexHooks(manifest, options = { userPromptSubmitHookEnabled: tru
         hooks: [
           {
             type: "command",
-            command: 'node "$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/session_start.js" || echo "{}"'
+            command: `node "${repoRoot}/.harness/hosts/codex/hooks/session_start.js" || echo "{}"`
           }
         ]
       }
     ],
     Stop: renderHookCommand(
-      'node "$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/stop.js" || echo "{}"'
+      `node "${repoRoot}/.harness/hosts/codex/hooks/stop.js" || echo "{}"`
     )
   };
   if (options.userPromptSubmitHookEnabled ?? true) {
     hooks.UserPromptSubmit = renderHookCommand(
-      'node "$(git rev-parse --show-toplevel)/.harness/hosts/codex/hooks/user_prompt_submit.js" || echo "{}"'
+      `node "${repoRoot}/.harness/hosts/codex/hooks/user_prompt_submit.js" || echo "{}"`
     );
   }
   return `${JSON.stringify(
@@ -317,12 +318,12 @@ function renderCodexStopHook() {
     ""
   ].join("\n");
 }
-function renderCodexManagedFiles(manifest, options = {}) {
+function renderCodexManagedFiles(manifest, workDir, options = {}) {
   const userPromptSubmitHookEnabled = options.userPromptSubmitHookEnabled ?? true;
   const agentManifests = options.agentManifests ?? [];
   const files = {
     ".codex/config.toml": renderCodexConfig(),
-    ".codex/hooks.json": renderCodexHooks(manifest, { userPromptSubmitHookEnabled }),
+    ".codex/hooks.json": renderCodexHooks(manifest, workDir, { userPromptSubmitHookEnabled }),
     ".harness/hosts/codex/hooks/session_start.js": renderCodexSessionStartHook(),
     ".harness/hosts/codex/hooks/user_prompt_submit.js": renderCodexUserPromptSubmitHook(),
     ".harness/hosts/codex/hooks/stop.js": renderCodexStopHook(),

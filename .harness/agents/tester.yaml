@@ -3,6 +3,7 @@ display_name: Harness Tester
 description: 在 TEST 阶段跑 required checks 与 acceptance 校验
 stage: test
 enabled: true
+plan_mode_enabled: false
 model_claude_code: sonnet
 model_codex: gpt-5.5
 model_gemini_cli: gemini-pro

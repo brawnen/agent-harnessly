@@ -1,5 +1,5 @@
 import type { AgentManifest, HostManifest } from '@brawnen/harnessly-shared';
-import { createHostManifest, renderClaudeCodeSubagentFile } from '@brawnen/harnessly-host-shared';
+import { createHostManifest, renderClaudeCodeSubagentFile, resolveRepoRoot } from '@brawnen/harnessly-host-shared';
 
 /**
  * v3-core host renderer 选项：传入 5 角色 sub-agent manifest，
@@ -309,8 +309,8 @@ export function renderClaudeCodePreToolUseHook(): string {
 
 // --- Settings & managed files ---
 
-export function renderClaudeCodeSettings(_manifest: HostManifest): string {
-  const repoRoot = '$(git rev-parse --show-toplevel)';
+export function renderClaudeCodeSettings(_manifest: HostManifest, workDir: string): string {
+  const repoRoot = resolveRepoRoot(workDir);
   return `${JSON.stringify(
     {
       hooks: {
@@ -367,12 +367,13 @@ export function renderClaudeCodeSettings(_manifest: HostManifest): string {
 
 export function renderClaudeCodeManagedFiles(
   manifest: HostManifest,
+  workDir: string,
   options: ClaudeCodeManagedFilesOptions = {},
 ): Record<string, string> {
   const agentManifests = options.agentManifests ?? [];
 
   const files: Record<string, string> = {
-    '.claude/settings.json': renderClaudeCodeSettings(manifest),
+    '.claude/settings.json': renderClaudeCodeSettings(manifest, workDir),
     '.harness/hosts/claude-code/hooks/session_start.js': renderClaudeCodeSessionStartHook(),
     '.harness/hosts/claude-code/hooks/user_prompt_submit.js': renderClaudeCodeUserPromptSubmitHook(),
     '.harness/hosts/claude-code/hooks/stop.js': renderClaudeCodeStopHook(),

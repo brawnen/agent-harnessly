@@ -1,0 +1,8 @@
+name: lint
+language: node
+command: npm run lint
+success_exit_code: 0
+env_required:
+detail_on_pass: lint 通过
+detail_on_fail_template: lint 失败：{stderr}
+fix_hint_template: 修复 lint 失败后重跑命令：npm run lint

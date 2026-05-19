@@ -3,6 +3,7 @@ display_name: Harness Requirement
 description: 在 SPEC 阶段帮 PM 澄清需求、列举可验收点
 stage: spec
 enabled: true
+plan_mode_enabled: false
 model_claude_code: haiku
 model_codex: gpt-5.5
 model_gemini_cli: gemini-flash

@@ -63,6 +63,11 @@ function containsAny(prompt: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(prompt));
 }
 
+/** 检测用户是否显式要求新建任务，此时即使有 active task 也应脱离旧任务 */
+function isExplicitNewTask(prompt: string): boolean {
+  return /(新建.*任务|开个新|独立任务|创建.*任务|新需求|另起.*任务|不.*继续)/i.test(prompt);
+}
+
 function detectChangeKind(prompt: string): TaskKind | null {
   const normalized = prompt.trim();
 
@@ -117,6 +122,13 @@ function detectRisk(prompt: string, taskKind: TaskKind): IntakeRisk {
   return 'low';
 }
 
+/**
+ * classifyPrompt — 入口意图分类。
+ *
+ * 核心原则：有 active task 时默认续接（resume_task），除非用户显式要求新任务
+ * 或只是纯提问。没有 active task 时，变更类 prompt 才会触发 delegate_to_planner
+ * 进入 SPEC 阶段。
+ */
 function classifyPrompt(
   prompt: string,
   hasActiveTask: boolean,
@@ -142,26 +154,40 @@ function classifyPrompt(
     };
   }
 
-  if (hasActiveTask && /(继续|resume|接着|延续)/i.test(prompt)) {
+  // 有 active task 时，优先续接。只有显式"新建任务"才脱离。
+  if (hasActiveTask) {
+    if (isExplicitNewTask(prompt)) {
+      const taskKind = detectChangeKind(prompt);
+      return {
+        action: allowFallbackCreate ? 'create_task' : 'delegate_to_planner',
+        reason: 'explicit_new_task',
+        taskKind: taskKind ?? 'code_change',
+        risk: taskKind ? detectRisk(prompt, taskKind) : 'medium',
+        confidence: 0.85,
+      };
+    }
+
+    if (isQuestionOnly(prompt)) {
+      return {
+        action: 'chat',
+        reason: 'matched_question_intent',
+        taskKind: 'question',
+        risk: 'low',
+        confidence: 0.95,
+      };
+    }
+
+    // 有 active task 的其他所有情况（含变更类意图）→ 续接当前任务
     return {
       action: 'resume_task',
       reason: 'resume_active_task',
       taskKind: 'resume',
       risk: 'low',
-      confidence: 1,
+      confidence: 0.85,
     };
   }
 
-  if (hasActiveTask && /(当前任务|这个任务|继续修复|继续做)/i.test(prompt)) {
-    return {
-      action: 'resume_task',
-      reason: 'resume_active_task',
-      taskKind: 'resume',
-      risk: 'low',
-      confidence: 1,
-    };
-  }
-
+  // 无 active task：按原有逻辑分流
   if (isQuestionOnly(prompt)) {
     return {
       action: 'chat',

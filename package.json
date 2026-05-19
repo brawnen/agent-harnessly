@@ -6,7 +6,10 @@
   "scripts": {
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "prepublish": "pnpm build && pnpm typecheck && pnpm test",
+    "version:alpha": "cd packages/cli && npm version prerelease --preid alpha",
+    "publish:alpha": "cd packages/cli && npm publish --tag alpha"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

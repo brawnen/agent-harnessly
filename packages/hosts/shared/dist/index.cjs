@@ -28,10 +28,23 @@ __export(index_exports, {
   parseHostManifest: () => parseHostManifest,
   renderClaudeCodeSubagentFile: () => renderClaudeCodeSubagentFile,
   renderCodexSubagentFile: () => renderCodexSubagentFile,
+  resolveRepoRoot: () => resolveRepoRoot,
   serializeHostManifest: () => serializeHostManifest
 });
 module.exports = __toCommonJS(index_exports);
+var import_node_child_process = require("child_process");
 var import_harnessly_shared = require("@brawnen/harnessly-shared");
+function resolveRepoRoot(workDir) {
+  try {
+    return (0, import_node_child_process.execSync)("git rev-parse --show-toplevel", {
+      cwd: workDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return workDir;
+  }
+}
 function getRepoLocalShellPaths(host) {
   switch (host) {
     case "claude-code":
@@ -164,5 +177,6 @@ function parseHostManifest(text) {
   parseHostManifest,
   renderClaudeCodeSubagentFile,
   renderCodexSubagentFile,
+  resolveRepoRoot,
   serializeHostManifest
 });

@@ -14,7 +14,7 @@ declare function renderClaudeCodeSessionStartHook(): string;
 declare function renderClaudeCodeUserPromptSubmitHook(): string;
 declare function renderClaudeCodeStopHook(): string;
 declare function renderClaudeCodePreToolUseHook(): string;
-declare function renderClaudeCodeSettings(_manifest: HostManifest): string;
-declare function renderClaudeCodeManagedFiles(manifest: HostManifest, options?: ClaudeCodeManagedFilesOptions): Record<string, string>;
+declare function renderClaudeCodeSettings(_manifest: HostManifest, workDir: string): string;
+declare function renderClaudeCodeManagedFiles(manifest: HostManifest, workDir: string, options?: ClaudeCodeManagedFilesOptions): Record<string, string>;
 
 export { type ClaudeCodeManagedFilesOptions, getClaudeCodeHostManifest, renderClaudeCodeHookIo, renderClaudeCodeManagedFiles, renderClaudeCodePreToolUseHook, renderClaudeCodeSessionStartHook, renderClaudeCodeSettings, renderClaudeCodeStopHook, renderClaudeCodeUserPromptSubmitHook };

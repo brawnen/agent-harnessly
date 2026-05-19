@@ -3,6 +3,7 @@ display_name: Harness Reviewer
 description: 在 REVIEW 阶段对改动做语义层审查（scope、敏感文件、副作用）
 stage: review
 enabled: true
+plan_mode_enabled: false
 model_claude_code: sonnet
 model_codex: gpt-5.5
 model_gemini_cli: gemini-pro

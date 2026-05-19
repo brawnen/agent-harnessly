@@ -1,4 +1,5 @@
 // src/index.ts
+import { execSync } from "child_process";
 import {
   HARNESSLY_VERSION,
   parseBoolean,
@@ -6,6 +7,17 @@ import {
   parseStringList,
   serializeFlatYaml
 } from "@brawnen/harnessly-shared";
+function resolveRepoRoot(workDir) {
+  try {
+    return execSync("git rev-parse --show-toplevel", {
+      cwd: workDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return workDir;
+  }
+}
 function getRepoLocalShellPaths(host) {
   switch (host) {
     case "claude-code":
@@ -137,5 +149,6 @@ export {
   parseHostManifest,
   renderClaudeCodeSubagentFile,
   renderCodexSubagentFile,
+  resolveRepoRoot,
   serializeHostManifest
 };
