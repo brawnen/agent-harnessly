@@ -8,6 +8,8 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D22-339933)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+Languages: English | [简体中文](README.zh-CN.md)
+
 ---
 
 ## What Is Harnessly?

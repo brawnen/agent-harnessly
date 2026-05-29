@@ -13,6 +13,7 @@ npm install -g @brawnen/harnessly@alpha
 ### Added
 
 - Added an MIT `LICENSE` file.
+- Added `README.zh-CN.md` as the Simplified Chinese README while keeping `README.md` as the English entry.
 - Added a package-local `packages/cli/README.md` so the npm package includes README content.
 
 ### Changed

@@ -2,6 +2,8 @@
 
 Harnessly is an engineering delivery control layer for coding agents.
 
+Languages: English | [简体中文](https://github.com/brawnen/agent-harnessly/blob/main/README.zh-CN.md)
+
 It is not a new coding agent or runtime. It adds repo-local contracts, workflow, gates, and evidence around existing tools such as Claude Code and Codex, so a task is judged by verifiable artifacts instead of agent self-reporting.
 
 ## Install
