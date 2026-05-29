@@ -1,4 +1,4 @@
-import { AgentRole, AgentManifest, StageMarker, AssetPromotion, HarnessMetaFile, SourceTaskEntry, ArchiveTopicSummary, ArchiveTopicDetail, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, PromoteAction, TaskContext, TaskReport, Finding, FindingGroup, CommitGateResult, RequiredCheck, TemplateDraft, ResidentReviewResult, Skill, TaskSummary, RiskLevel } from '@brawnen/harnessly-shared';
+import { AgentRole, AgentManifest, StageMarker, AssetPromotion, HarnessMetaFile, SourceTaskEntry, ArchiveTopicSummary, ArchiveTopicDetail, WorkflowPreset, EvidenceCheckResult, ProjectType, HostName, HarnessConfig, TemplateName, Contract, ContractGateResult, EvidenceResult, EvidenceSnapshot, BaselineDiff, EvidenceBaseline, AdapterKind, AdapterInput, AdapterOutput, FeedbackEntry, PromoteAction, TaskContext, TaskReport, Finding, FindingGroup, CommitGateResult, RequiredCheck, TemplateDraft, ResidentReviewResult, Skill, PresetSource, TaskSummary, RiskLevel } from '@brawnen/harnessly-shared';
 import { z } from 'zod';
 
 /**
@@ -125,7 +125,7 @@ declare function getArchiveTargetPaths(workDir: string, _taskId: string, topic?:
 /** @deprecated 使用 promoteTaskArtifacts */
 declare function archiveTaskArtifacts(workDir: string, taskId: string, kind: ArchiveKind, options?: ArchiveOptions): Promise<ArchiveResult>;
 
-declare function runArtifactGuard(taskDir: string): Promise<EvidenceCheckResult>;
+declare function runArtifactGuard(taskDir: string, preset?: WorkflowPreset): Promise<EvidenceCheckResult>;
 interface WriteCheckResult {
     allowed: boolean;
     reason: string;
@@ -238,6 +238,11 @@ declare class ClaudeCodeAdapter implements Adapter {
     readonly kind: "claude-code";
     execute(input: AdapterInput): Promise<AdapterOutput>;
 }
+/**
+ * Codex adapter 默认执行命令：通过 stdin 把 prompt 文件喂给 `codex exec`。
+ * 提取为导出常量，便于单测直接断言命令拼接（不必真实跑 codex 二进制）。
+ */
+declare const DEFAULT_CODEX_COMMAND = "codex exec --full-auto - < \"$HARNESSLY_PROMPT_FILE\"";
 declare class CodexAdapter implements Adapter {
     readonly kind: "codex";
     execute(input: AdapterInput): Promise<AdapterOutput>;
@@ -419,6 +424,15 @@ declare function runScopeCheck(contract: Contract | undefined, changedFiles: str
 
 declare function runStructureCheck(workDir: string, changedFiles: string[]): Promise<EvidenceCheckResult[]>;
 
+/**
+ * 创建任务时可传入的可选参数 (v2.1 新增)。
+ * - preset: 任务级 Workflow Preset；缺省 lite (SPEC §6.4.1)
+ * - presetSource: preset 设置来源；缺省 slash_command
+ */
+interface CreateTaskOptions {
+    preset?: WorkflowPreset;
+    presetSource?: PresetSource;
+}
 declare class TaskManager {
     private loadConfig;
     private getTasksDir;
@@ -440,7 +454,7 @@ declare class TaskManager {
     private getFeedbackFile;
     private generateTaskId;
     setActiveTask(workDir: string, taskId: string): Promise<void>;
-    create(goal: string, workDir: string): Promise<TaskContext>;
+    create(goal: string, workDir: string, options?: CreateTaskOptions): Promise<TaskContext>;
     saveState(ctx: TaskContext): Promise<void>;
     saveContract(ctx: TaskContext, contract: Contract): Promise<void>;
     saveRequirement(ctx: TaskContext, requirement: string): Promise<void>;
@@ -526,6 +540,18 @@ declare class WorkflowEngine {
         dryRun: boolean;
     }>;
     /**
+     * lite preset 在 test 阶段 PASS 后的终止处理。
+     *
+     * 与 full preset 的差异：
+     * - 不调 evaluateCommitGate（无 commit_gate 阶段）
+     * - 不产出 report.json / commit-summary.md
+     * - 直接把 state.status 标 completed、state.currentStage 标 test
+     *
+     * lite 模式下 asset promotion 的触发点改为本函数（SPEC §22.2.1 修订），
+     * 但具体调用 promoteTaskArtifacts 推迟到阶段 2 实施。
+     */
+    private finalizeLitePreset;
+    /**
      * Stage 1: spec
      * 产出 contract.yaml（v3-core 中等价于 SPEC 工件）。
      * spec_gate：contract 合规性校验，失败即在 spec 阶段标记失败。
@@ -574,4 +600,4 @@ interface CorePackageInfo {
 }
 declare function getCorePackageInfo(): CorePackageInfo;
 
-export { AGENT_ROLES, type Adapter, type AgentDiskFiles, type AgentRoutingIntent, type AgentWriteResult, AnthropicClient, type AnthropicClientOptions, type ArchiveKind, type ArchiveOptions, type ArchiveResult, type ArchiveTargetPaths, type ArchivedFile, type BuiltinTemplateDefinition, CORE_PACKAGE_NAME, ClaudeCodeAdapter, CodexAdapter, type ContractGenerationOptions, type CorePackageInfo, CustomAdapter, EVIDENCE_BASELINE_FILENAME, type EvaluateCommitGateOptions, FEEDBACK_POOL_FILENAME, HARNESS_DIRNAME, type HarnessPaths, type LLMClient, type PickRecentEntriesOptions, type PromoteTaskOptions, type ScopeViolation, type SkillWriteResult, type StructuredGenerationOptions, TaskManager, TemplateRegistry, type TextGenerationOptions, WorkflowEngine, type WorkflowRunOptions, type WriteCheckResult, appendFeedbackEntry, appendToHarnessMeta, applyPromotion, archiveTaskArtifacts, assemblePrompt, buildBaselineDiff, buildEvidenceBaseline, buildEvidenceSnapshot, buildFeedbackEntry, checkContract, checkWritePermission, collectChangedFiles, collectEnabledRoles, collectEvidence, createAdapter, createDefaultHarnessConfig, createLLMClientFromEnv, createTaskReport, createTemplateDraft, createTemplateRegistry, deriveTemplateName, detectProjectType, ensureHarnessDirectories, evaluateCommitGate, generateContract, generateFallbackContract, generatePlan, getAgentDiskFiles, getArchiveTargetPaths, getBuiltinTemplates, getCorePackageInfo, getDefaultAgentManifest, getDefaultRequiredChecks, getEvidenceBaselinePath, getFeedbackHistoryPath, getFeedbackPoolPath, getHarnessMetaPath, getHarnessPaths, getRoleForStage, getSkillPath, getTaskEvidenceDir, getTaskEvidencePath, groupFindingsBySimilarity, listAgentFiles, listArchiveTopics, loadAgentManifest, loadAgentManifests, loadEvidenceBaseline, loadFeedbackPool, loadHarnessConfig, loadHarnessMeta, loadSkill, matchTemplate, moveFindingsToHistory, parseHarnessConfig, pickRecentEntries, pickRecommendedAgent, promoteFeedbackEntry, promoteTaskArtifacts, renderFeedbackEntriesAsLines, renderResidentReview, renderReviewAgentsTemplate, renderSkillTemplate, renderStructureRulesTemplate, runArtifactGuard, runLevel2Validation, runResidentReview, runReviewStage, runScopeCheck, runSkillCheck, runStructureCheck, saveBaselineDiff, saveEvidenceBaseline, saveEvidenceSnapshot, saveHarnessMeta, saveTemplateDraft, serializeHarnessConfig, showArchiveTopic, verifyArchive, writeDefaultAgentManifests, writeDefaultSkillManifests, writeFileIfChanged, writeHarnessConfig };
+export { AGENT_ROLES, type Adapter, type AgentDiskFiles, type AgentRoutingIntent, type AgentWriteResult, AnthropicClient, type AnthropicClientOptions, type ArchiveKind, type ArchiveOptions, type ArchiveResult, type ArchiveTargetPaths, type ArchivedFile, type BuiltinTemplateDefinition, CORE_PACKAGE_NAME, ClaudeCodeAdapter, CodexAdapter, type ContractGenerationOptions, type CorePackageInfo, type CreateTaskOptions, CustomAdapter, DEFAULT_CODEX_COMMAND, EVIDENCE_BASELINE_FILENAME, type EvaluateCommitGateOptions, FEEDBACK_POOL_FILENAME, HARNESS_DIRNAME, type HarnessPaths, type LLMClient, type PickRecentEntriesOptions, type PromoteTaskOptions, type ScopeViolation, type SkillWriteResult, type StructuredGenerationOptions, TaskManager, TemplateRegistry, type TextGenerationOptions, WorkflowEngine, type WorkflowRunOptions, type WriteCheckResult, appendFeedbackEntry, appendToHarnessMeta, applyPromotion, archiveTaskArtifacts, assemblePrompt, buildBaselineDiff, buildEvidenceBaseline, buildEvidenceSnapshot, buildFeedbackEntry, checkContract, checkWritePermission, collectChangedFiles, collectEnabledRoles, collectEvidence, createAdapter, createDefaultHarnessConfig, createLLMClientFromEnv, createTaskReport, createTemplateDraft, createTemplateRegistry, deriveTemplateName, detectProjectType, ensureHarnessDirectories, evaluateCommitGate, generateContract, generateFallbackContract, generatePlan, getAgentDiskFiles, getArchiveTargetPaths, getBuiltinTemplates, getCorePackageInfo, getDefaultAgentManifest, getDefaultRequiredChecks, getEvidenceBaselinePath, getFeedbackHistoryPath, getFeedbackPoolPath, getHarnessMetaPath, getHarnessPaths, getRoleForStage, getSkillPath, getTaskEvidenceDir, getTaskEvidencePath, groupFindingsBySimilarity, listAgentFiles, listArchiveTopics, loadAgentManifest, loadAgentManifests, loadEvidenceBaseline, loadFeedbackPool, loadHarnessConfig, loadHarnessMeta, loadSkill, matchTemplate, moveFindingsToHistory, parseHarnessConfig, pickRecentEntries, pickRecommendedAgent, promoteFeedbackEntry, promoteTaskArtifacts, renderFeedbackEntriesAsLines, renderResidentReview, renderReviewAgentsTemplate, renderSkillTemplate, renderStructureRulesTemplate, runArtifactGuard, runLevel2Validation, runResidentReview, runReviewStage, runScopeCheck, runSkillCheck, runStructureCheck, saveBaselineDiff, saveEvidenceBaseline, saveEvidenceSnapshot, saveHarnessMeta, saveTemplateDraft, serializeHarnessConfig, showArchiveTopic, verifyArchive, writeDefaultAgentManifests, writeDefaultSkillManifests, writeFileIfChanged, writeHarnessConfig };

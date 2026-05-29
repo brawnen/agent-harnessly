@@ -63,7 +63,6 @@ describe('host user-prompt-submit command', () => {
       action: string;
       taskCreated: boolean;
       reason: string;
-      taskKind: string;
     };
     const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
     const activeTask = await readFile(path.join(workDir, '.harness', 'active-task.txt'), 'utf8');
@@ -71,7 +70,6 @@ describe('host user-prompt-submit command', () => {
     expect(payload.action).toBe('chat');
     expect(payload.taskCreated).toBe(false);
     expect(payload.reason).toBe('host_internal_prompt');
-    expect(payload.taskKind).toBe('host_internal');
     expect(tasks).toEqual([]);
     expect(activeTask).toBe('');
   });
@@ -89,23 +87,23 @@ describe('host user-prompt-submit command', () => {
       action: string;
       taskCreated: boolean;
       reason: string;
-      taskKind: string;
       nextStep: string;
+      preset: string;
     };
     const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
     const events = await readFile(path.join(workDir, '.harness', 'events.jsonl'), 'utf8');
 
     expect(payload.action).toBe('chat');
     expect(payload.taskCreated).toBe(false);
-    expect(payload.reason).toBe('matched_question_intent');
-    expect(payload.taskKind).toBe('question');
+    expect(payload.reason).toBe('question_intent');
     expect(payload.nextStep).toBe('no_action');
+    expect(payload.preset).toBe('lite');
     expect(tasks).toEqual([]);
     expect(events).toContain('"type":"host.intake_decision"');
-    expect(events).toContain('"taskKind":"question"');
+    expect(events).toContain('"reason":"question_intent"');
   });
 
-  it('should treat unknown or mechanism questions as chat instead of defaulting to new task', async () => {
+  it('should treat unknown or mechanism questions as chat (matched by 依据什么 hint)', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -118,20 +116,17 @@ describe('host user-prompt-submit command', () => {
       action: string;
       taskCreated: boolean;
       reason: string;
-      taskKind: string;
-      confidence: number;
     };
     const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
 
     expect(payload.action).toBe('chat');
     expect(payload.taskCreated).toBe(false);
-    expect(payload.reason).toBe('ambiguous_intent');
-    expect(payload.taskKind).toBe('question');
-    expect(payload.confidence).toBeLessThan(0.7);
+    // v2.1: 不再做模糊度判定，含元问句词（依据什么/为什么/?...）即识别为 question_intent
+    expect(payload.reason).toBe('question_intent');
     expect(tasks).toEqual([]);
   });
 
-  it('should delegate new tasks to v3-core requirement role by default', async () => {
+  it('should delegate new tasks under default lite preset (no sub-agent recommended)', async () => {
     const workDir = await createTempDir();
     tempDirs.push(workDir);
     process.chdir(workDir);
@@ -147,23 +142,140 @@ describe('host user-prompt-submit command', () => {
       nextStep: string;
       fallbackCreateTaskWithoutPlanner: boolean;
       reason: string;
-      taskKind: string;
-      risk: string;
+      preset: string;
+      presetSource: string;
     };
     const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
     const activeTask = await readFile(path.join(workDir, '.harness', 'active-task.txt'), 'utf8');
 
     expect(payload.action).toBe('delegate_to_planner');
     expect(payload.taskCreated).toBe(false);
-    // v3-core: init 默认启用 requirement → 推荐路由到 requirement
-    expect(payload.recommendedAgent).toBe('harness-requirement');
+    // v2.1: lite preset (默认) 由主 agent 直接承担三阶段，不推荐 sub-agent
+    expect(payload.recommendedAgent).toBeNull();
     expect(payload.nextStep).toBe('delegate_to_planner');
     expect(payload.fallbackCreateTaskWithoutPlanner).toBe(false);
-    expect(payload.reason).toBe('matched_change_intent');
-    expect(payload.taskKind).toBe('bug_fix');
-    expect(payload.risk).toBe('low');
+    expect(payload.reason).toBe('change_intent');
+    expect(payload.preset).toBe('lite');
+    expect(payload.presetSource).toBe('slash_command');
     expect(tasks).toEqual([]);
     expect(activeTask).toBe('');
+  });
+
+  it('v2.1 bug A fix: create_task strips [harness:feat] marker from goal', async () => {
+    // marker 是 preset 控制信号，不应污染 contract.goal / task.json goal
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+    // 开启 fallback 让首次带 marker 的变更类 prompt 直接 create_task
+    const configPath = path.join(workDir, '.harness', 'harness.config.yaml');
+    const config = await readFile(configPath, 'utf8');
+    await writeFile(
+      configPath,
+      config.replace(
+        'fallback_create_task_without_planner: false',
+        'fallback_create_task_without_planner: true',
+      ),
+      'utf8',
+    );
+
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '[harness:feat] 接入支付模块' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      taskCreated: boolean;
+      taskId: string;
+      preset: string;
+    };
+
+    expect(payload.action).toBe('create_task');
+    expect(payload.preset).toBe('full');
+
+    // 关键断言：task.json 的 goal 不含 marker
+    const meta = JSON.parse(
+      await readFile(path.join(workDir, '.harness', 'tasks', payload.taskId, 'task.json'), 'utf8'),
+    ) as { goal: string };
+    expect(meta.goal).toBe('接入支付模块');
+    expect(meta.goal).not.toContain('[harness:feat]');
+  });
+
+  it('v2.1 fix: [harness:feat] marker overrides active task — creates new full task, not resume_task', async () => {
+    // SPEC §6.4.3: marker 是用户显式声明，优先级高于 active task 续接
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+    // 设置 active task 模拟续接场景
+    await mkdir(path.join(workDir, '.harness', 'tasks', 'task-active'), { recursive: true });
+    await writeFile(
+      path.join(workDir, '.harness', 'tasks', 'task-active', 'task.json'),
+      JSON.stringify({ taskId: 'task-active', goal: '在做的旧任务' }),
+      'utf8',
+    );
+    await writeFile(
+      path.join(workDir, '.harness', 'tasks', 'task-active', 'state.json'),
+      JSON.stringify({
+        taskId: 'task-active',
+        status: 'active',
+        currentStage: 'execute',
+        currentOwner: 'developer',
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z',
+        completedStages: ['spec'],
+        retryCount: 0,
+        preset: 'lite',
+        presetSource: 'slash_command',
+        presetSetAt: '2026-04-20T00:00:00.000Z',
+      }),
+      'utf8',
+    );
+    await writeFile(path.join(workDir, '.harness', 'active-task.txt'), 'task-active', 'utf8');
+
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '[harness:feat] 接入支付' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      reason: string;
+      preset: string;
+      presetSource: string;
+    };
+
+    // 关键：不应走 resume_task，而是 delegate_to_planner / create_task
+    expect(payload.action).toBe('delegate_to_planner');
+    expect(payload.reason).toBe('explicit_new_task');
+    expect(payload.preset).toBe('full');
+    expect(payload.presetSource).toBe('prompt_marker');
+  });
+
+  it('v2.1: should recommend harness-requirement under full preset triggered by [harness:feat] marker', async () => {
+    const workDir = await createTempDir();
+    tempDirs.push(workDir);
+    process.chdir(workDir);
+
+    await captureStdout(() => runInit({ host: 'codex' }));
+    const output = await captureStdout(() =>
+      runHostUserPromptSubmit({ prompt: '[harness:feat] 接入 OAuth 2.0 登录' }, []),
+    );
+    const payload = JSON.parse(output) as {
+      action: string;
+      taskCreated: boolean;
+      recommendedAgent?: string | null;
+      reason: string;
+      preset: string;
+      presetSource: string;
+    };
+
+    expect(payload.action).toBe('delegate_to_planner');
+    expect(payload.taskCreated).toBe(false);
+    expect(payload.preset).toBe('full');
+    expect(payload.presetSource).toBe('prompt_marker');
+    // full preset：推荐 harness-requirement sub-agent 接管 spec 阶段
+    expect(payload.recommendedAgent).toBe('harness-requirement');
+    expect(payload.reason).toBe('change_intent');
   });
 
   it('returns null recommendedAgent when requirement role is disabled (no v2 alias fallback)', async () => {
@@ -294,14 +406,12 @@ describe('host user-prompt-submit command', () => {
       action: string;
       activeTaskId: string;
       reason: string;
-      taskKind: string;
       nextStep: string;
     };
 
     expect(payload.action).toBe('resume_task');
     expect(payload.activeTaskId).toBe('task-1');
     expect(payload.reason).toBe('resume_active_task');
-    expect(payload.taskKind).toBe('resume');
     expect(payload.nextStep).toBe('resume_existing_task');
   });
 
@@ -331,14 +441,14 @@ describe('host user-prompt-submit command', () => {
       taskId: string;
       contractPath: string;
       planPath: string;
-      taskKind: string;
+      preset: string;
     };
     const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
     const activeTask = await readFile(path.join(workDir, '.harness', 'active-task.txt'), 'utf8');
 
     expect(payload.action).toBe('create_task');
     expect(payload.taskCreated).toBe(true);
-    expect(payload.taskKind).toBe('bug_fix');
+    expect(payload.preset).toBe('lite'); // 默认 preset
     expect(payload.contractPath).toContain(payload.taskId);
     expect(payload.planPath).toContain(payload.taskId);
     expect(tasks).toEqual([payload.taskId]);
@@ -366,8 +476,8 @@ describe('host user-prompt-submit command', () => {
 
     expect(payload1.action).toBe('delegate_to_planner');
     expect(payload1.taskCreated).toBe(false);
-    // v3-core: 默认 requirement 启用，推荐 harness-requirement
-    expect(payload1.recommendedAgent).toBe('harness-requirement');
+    // v2.1: lite preset (默认) 不推荐 sub-agent
+    expect(payload1.recommendedAgent).toBeNull();
     expect(payload1.autoFallback).toBe(false);
 
     // 第二次：Planner 未生效 → 自动降级为 create_task
@@ -392,50 +502,9 @@ describe('host user-prompt-submit command', () => {
     expect(tasks).toEqual([payload2.taskId]);
   });
 
-  it('should learn exact manual feedback from the last intake decision', async () => {
-    const workDir = await createTempDir();
-    tempDirs.push(workDir);
-    process.chdir(workDir);
-
-    await captureStdout(() => runInit({ host: 'codex' }));
-
-    const prompt = '优化 hook 配置的判断依据';
-    const firstOutput = await captureStdout(() =>
-      runHostUserPromptSubmit({ prompt }, []),
-    );
-    const first = JSON.parse(firstOutput) as {
-      action: string;
-      reason: string;
-    };
-    expect(first.action).toBe('delegate_to_planner');
-    expect(first.reason).toBe('matched_change_intent');
-
-    await captureStdout(() =>
-      runIntake(
-        { last: true, actual: 'chat', reason: 'question_about_harnessly_mechanism' },
-        ['feedback', 'add'],
-      ),
-    );
-
-    const secondOutput = await captureStdout(() =>
-      runHostUserPromptSubmit({ prompt }, []),
-    );
-    const second = JSON.parse(secondOutput) as {
-      action: string;
-      taskCreated: boolean;
-      reason: string;
-      learnedFrom: string[];
-    };
-    const feedbackText = await readFile(path.join(workDir, '.harness', 'intake-feedback.jsonl'), 'utf8');
-    const tasks = await readdir(path.join(workDir, '.harness', 'tasks'));
-
-    expect(second.action).toBe('chat');
-    expect(second.taskCreated).toBe(false);
-    expect(second.reason).toBe('learned_exact_feedback');
-    expect(second.learnedFrom.length).toBe(1);
-    expect(feedbackText).toContain('question_about_harnessly_mechanism');
-    expect(tasks).toEqual([]);
-  });
+  // v2.1: 删除"intake feedback 学习"测试。该功能与 SPEC §6.4.3 "不得通过启发式手段
+  // 自动升档/分流" 原则冲突，user-prompt-submit 不再调用 classifyByIntakeFeedback。
+  // intake CLI 命令（harness intake feedback list|add|remove|clear）仍保留供用户独立查阅。
 
   it('should not fallback for resume prompts even after a failed delegation', async () => {
     const workDir = await createTempDir();

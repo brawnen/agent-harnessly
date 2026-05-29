@@ -4,6 +4,11 @@
 import { ZodError, z } from "zod";
 var SHARED_PACKAGE_NAME = "@brawnen/harnessly-shared";
 var HARNESSLY_VERSION = "0.1.0-alpha.0";
+var PRESET_STAGE_MAP = {
+  lite: ["spec", "execute", "test"],
+  full: ["spec", "design", "execute", "review", "test", "commit_gate"]
+};
+var DEFAULT_PRESET = "lite";
 var packageInfo = {
   name: SHARED_PACKAGE_NAME,
   version: HARNESSLY_VERSION
@@ -25,6 +30,8 @@ var riskLevelSchema = z.enum(["low", "medium", "high"]);
 var estimatedComplexitySchema = z.enum(["simple", "medium", "complex"]);
 var adapterKindSchema = z.enum(["claude-code", "codex", "custom"]);
 var taskStatusSchema = z.enum(["active", "blocked", "completed", "aborted"]);
+var workflowPresetSchema = z.enum(["lite", "full"]);
+var presetSourceSchema = z.enum(["slash_command", "prompt_marker", "upgrade"]);
 var workflowStageSchema = z.enum([
   "spec",
   "design",
@@ -1256,7 +1263,7 @@ async function promoteFeedbackEntry(workDir, taskId, reason = "manual promotion"
   );
   return entry;
 }
-function createInitialTaskState(taskId) {
+function createInitialTaskState(taskId, preset = DEFAULT_PRESET, presetSource = "slash_command") {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     taskId,
@@ -1266,7 +1273,21 @@ function createInitialTaskState(taskId) {
     createdAt: now,
     updatedAt: now,
     completedStages: [],
-    retryCount: 0
+    retryCount: 0,
+    preset,
+    presetSource,
+    presetSetAt: now
+  };
+}
+function migrateTaskStateV2_1(raw) {
+  if (typeof raw.preset === "string" && typeof raw.presetSource === "string" && typeof raw.presetSetAt === "string") {
+    return raw;
+  }
+  return {
+    ...raw,
+    preset: DEFAULT_PRESET,
+    presetSource: "slash_command",
+    presetSetAt: typeof raw.createdAt === "string" ? raw.createdAt : (/* @__PURE__ */ new Date()).toISOString()
   };
 }
 async function writeJson(filePath, payload) {
@@ -1374,11 +1395,15 @@ var TaskManager = class {
     await writeFile4(this.getActiveTaskFile(workDir), `${taskId}
 `, "utf8");
   }
-  async create(goal, workDir) {
+  async create(goal, workDir, options = {}) {
     const taskId = this.generateTaskId();
     const taskDir = this.getTaskDir(workDir, taskId);
     const config = await this.loadConfig(workDir);
-    const state = createInitialTaskState(taskId);
+    const state = createInitialTaskState(
+      taskId,
+      options.preset ?? DEFAULT_PRESET,
+      options.presetSource ?? "slash_command"
+    );
     await mkdir3(taskDir, { recursive: true });
     await writeJson(this.getMetaFile(taskDir), { taskId, goal });
     await writeJson(this.getStateFile(taskDir), state);
@@ -1510,7 +1535,8 @@ ${content}
     let state;
     try {
       meta = await readJson(this.getMetaFile(taskDir));
-      state = await readJson(this.getStateFile(taskDir));
+      const rawState = await readJson(this.getStateFile(taskDir));
+      state = migrateTaskStateV2_1(rawState);
     } catch (error) {
       if (isMissingFileError4(error)) {
         throw new Error(`task ${taskId} \u4E0D\u5B58\u5728\u3002\u53EF\u5148\u6267\u884C harnessly list \u67E5\u770B\u5DF2\u6709\u4EFB\u52A1\u3002`);
@@ -1564,7 +1590,8 @@ ${content}
       entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
         const taskDir = path5.join(tasksDir, entry.name);
         const meta = await readJson(this.getMetaFile(taskDir));
-        const state = await readJson(this.getStateFile(taskDir));
+        const rawState = await readJson(this.getStateFile(taskDir));
+        const state = migrateTaskStateV2_1(rawState);
         return {
           taskId: meta.taskId,
           goal: meta.goal,
@@ -1981,20 +2008,30 @@ async function exists(filePath) {
 function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
-var REQUIRED_TASK_ARTIFACTS = [
-  "requirement.md",
-  "contract.yaml",
-  "design.md",
-  "task-breakdown.md",
-  "implementation-notes.md",
-  "review.md",
-  "resident-review.md",
-  "test-report.md",
-  "evidence/current.json"
-];
-async function runArtifactGuard(taskDir) {
+var REQUIRED_ARTIFACTS_BY_PRESET = {
+  lite: [
+    "requirement.md",
+    "contract.yaml",
+    "implementation-notes.md",
+    "test-report.md",
+    "evidence/current.json"
+  ],
+  full: [
+    "requirement.md",
+    "contract.yaml",
+    "design.md",
+    "task-breakdown.md",
+    "implementation-notes.md",
+    "review.md",
+    "resident-review.md",
+    "test-report.md",
+    "evidence/current.json"
+  ]
+};
+async function runArtifactGuard(taskDir, preset = "full") {
+  const required = REQUIRED_ARTIFACTS_BY_PRESET[preset];
   const missing = [];
-  for (const relative of REQUIRED_TASK_ARTIFACTS) {
+  for (const relative of required) {
     if (!await exists(path7.join(taskDir, relative))) {
       missing.push(relative);
     }
@@ -2002,8 +2039,8 @@ async function runArtifactGuard(taskDir) {
   return {
     name: "artifact.guard",
     status: missing.length === 0 ? "passed" : "failed",
-    command: "check .harness task artifacts",
-    detail: missing.length === 0 ? "\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\u5B8C\u6574" : `\u7F3A\u5C11\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\uFF1A${missing.join(", ")}`,
+    command: `check .harness task artifacts (preset=${preset})`,
+    detail: missing.length === 0 ? `\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\u5B8C\u6574 (preset=${preset})` : `\u7F3A\u5C11\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6 (preset=${preset})\uFF1A${missing.join(", ")}`,
     fixHint: missing.length === 0 ? void 0 : "\u56DE\u5230\u5BF9\u5E94\u9636\u6BB5\u751F\u6210\u7F3A\u5931\u5DE5\u4EF6\uFF0C\u4E0D\u8981\u53EA\u4F9D\u8D56\u5BF9\u8BDD\u6587\u672C"
   };
 }
@@ -2188,6 +2225,11 @@ function createContractPrompt(goal, templateName, fallback) {
     "- riskLevel \u57FA\u4E8E\u6539\u52A8\u98CE\u9669\u5224\u65AD",
     "- scopeInclude \u4F7F\u7528\u5177\u4F53\u4FEE\u6539\u8303\u56F4\uFF0C\u4E0D\u8981\u5199\u7A7A\u8BDD",
     "- acceptanceCriteria \u81F3\u5C11 3 \u6761\uFF0C\u4E14\u8981\u53EF\u9A8C\u8BC1",
+    "- \u5C3D\u91CF\u8BA9 criterion \u7528\u4EE5\u4E0B\u7ED3\u6784\u5316\u524D\u7F00\uFF0C\u4F7F\u5176\u53EF\u88AB\u81EA\u52A8\u6821\u9A8C\uFF08\u65E0\u6CD5\u7ED3\u6784\u5316\u65F6\u624D\u9000\u56DE\u81EA\u7136\u8BED\u8A00\uFF09\uFF1A",
+    "  - `file:<\u76F8\u5BF9\u8DEF\u5F84>`\uFF1A\u65AD\u8A00\u6587\u4EF6\u5B58\u5728",
+    "  - `contains:<\u76F8\u5BF9\u8DEF\u5F84>::<\u6587\u672C>`\uFF1A\u65AD\u8A00\u6587\u4EF6\u5305\u542B\u6307\u5B9A\u6587\u672C",
+    "  - `command:<\u547D\u4EE4>`\uFF1A\u65AD\u8A00\u8BE5\u547D\u4EE4\u4EE5\u9000\u51FA\u7801 0 \u901A\u8FC7\uFF08\u5982 `command:pnpm test`\uFF09",
+    "  - \u7ED3\u6784\u5316\u6761\u76EE\u7684 verifiableBy \u5E94\u4E0E\u624B\u6BB5\u4E00\u81F4\uFF08file/contains/command \u7C7B\u7528 test \u6216 build\uFF0C\u7EAF\u4EBA\u5DE5\u5224\u65AD\u624D\u7528 manual\uFF09",
     "- outOfScope \u660E\u786E\u5217\u51FA\u4E0D\u505A\u7684\u4E8B\u60C5",
     "",
     `\u53EF\u53C2\u8003\u7684\u4FDD\u5E95 contract\uFF1A${JSON.stringify(fallback, null, 2)}`
@@ -2726,10 +2768,11 @@ var ClaudeCodeAdapter = class {
     };
   }
 };
+var DEFAULT_CODEX_COMMAND = 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"';
 var CodexAdapter = class {
   kind = "codex";
   async execute(input) {
-    const command = input.command?.trim() || 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"';
+    const command = input.command?.trim() || DEFAULT_CODEX_COMMAND;
     const result = await runShellCommand(command, input);
     return {
       ...result,
@@ -3546,9 +3589,20 @@ var WorkflowEngine = class {
   baselineSnapshot = null;
   async run(ctx, options) {
     const startFrom = options.resumeFrom ?? "spec";
+    const enabledStages = new Set(PRESET_STAGE_MAP[ctx.state.preset]);
+    const hasDesign = enabledStages.has("design");
+    const hasReview = enabledStages.has("review");
+    const hasCommitGate = enabledStages.has("commit_gate");
+    if (startFrom === "design" && !hasDesign) {
+      throw new Error(
+        `lite preset \u4EFB\u52A1\u4E0D\u5B58\u5728 design \u9636\u6BB5\uFF0C\u65E0\u6CD5\u4ECE 'design' \u6062\u590D\u3002\u53EF\u6539\u7528 'spec' \u91CD\u51FA\u6216 '/harness-upgrade' \u5347\u6863\u4E3A full\u3002`
+      );
+    }
     if (startFrom === "spec") {
       await this.executeSpecStage(ctx);
-      await this.executeDesignStage(ctx);
+      if (hasDesign) {
+        await this.executeDesignStage(ctx);
+      }
     } else if (startFrom === "design") {
       await this.executeDesignStage(ctx);
     } else if (startFrom === "execute") {
@@ -3558,13 +3612,32 @@ var WorkflowEngine = class {
       return { dryRun: true };
     }
     const adapterResult = await this.executeExecuteStage(ctx, options);
-    const reviewFindings = await this.executeReviewStage(ctx);
+    const reviewFindings = hasReview ? await this.executeReviewStage(ctx) : [];
     const evidence = await this.executeTestStage(ctx, reviewFindings);
-    const report = await this.executeCommitGateStage(ctx, adapterResult, evidence);
-    return {
-      report,
-      dryRun: false
-    };
+    if (hasCommitGate) {
+      const report = await this.executeCommitGateStage(ctx, adapterResult, evidence);
+      return { report, dryRun: false };
+    }
+    await this.finalizeLitePreset(ctx);
+    return { dryRun: false };
+  }
+  /**
+   * lite preset 在 test 阶段 PASS 后的终止处理。
+   *
+   * 与 full preset 的差异：
+   * - 不调 evaluateCommitGate（无 commit_gate 阶段）
+   * - 不产出 report.json / commit-summary.md
+   * - 直接把 state.status 标 completed、state.currentStage 标 test
+   *
+   * lite 模式下 asset promotion 的触发点改为本函数（SPEC §22.2.1 修订），
+   * 但具体调用 promoteTaskArtifacts 推迟到阶段 2 实施。
+   */
+  async finalizeLitePreset(ctx) {
+    ctx.state.status = "completed";
+    ctx.state.currentStage = "test";
+    ctx.state.currentOwner = "tester";
+    markCompleted(ctx, "test");
+    await this.manager.saveState(ctx);
   }
   /**
    * Stage 1: spec
@@ -3714,7 +3787,7 @@ var WorkflowEngine = class {
     if (ctx.contract) {
       await this.manager.saveTestReport(ctx, renderTestReport(ctx.contract, evidence));
     }
-    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir)];
+    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir, ctx.state.preset)];
     markCompleted(ctx, "test");
     await this.manager.saveState(ctx);
     return evidence;
@@ -4373,25 +4446,31 @@ function renderClaudeCodeHookIo(manifest) {
     "  const quotedPrompt = JSON.stringify(safePrompt);",
     "  const recommendedAgent = result?.recommendedAgent || null;",
     "  const activeStage = result?.activeStage || null;",
+    "  // v2.1 (SPEC \xA76.4.4 + P1 spec \xA74.8.1): lite preset \u5B8C\u5168\u4E0D\u6CE8\u5165\u3002",
+    "  // \u4E09\u9636\u6BB5\u7531\u4E3B agent \u76F4\u63A5\u627F\u62C5\uFF0C\u4E0D\u9700\u8981 sub-agent\uFF1B\u6CE8\u5165\u4F1A\u6C61\u67D3\u4E0A\u4E0B\u6587\u3002",
+    "  const preset = result?.preset || 'lite';",
+    "  if (preset === 'lite') {",
+    "    return '';",
+    "  }",
     "  if (result?.action === 'resume_task' && result?.activeTaskId) {",
     "    const lines = [",
-    "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u7EED\u63A5\u5F53\u524D\u4EFB\u52A1\u3002',",
+    "      '[Harnessly full preset] \u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u7EED\u63A5\u5F53\u524D full \u4EFB\u52A1\u3002',",
     "      `- active_task_id: ${result.activeTaskId}`,",
     "      activeStage ? `- active_stage: ${activeStage}` : null,",
     "      '\u8BF7\u4F18\u5148\u6CBF\u7528\u5F53\u524D active task \u7EE7\u7EED\uFF0C\u800C\u4E0D\u662F\u65B0\u5EFA\u4EFB\u52A1\u3002',",
     "      recommendedAgent",
-    "        ? `\u63A8\u8350\u7531 ${recommendedAgent} \u63A5\u624B\u5F53\u524D\u9636\u6BB5\uFF1Bexecute \u9636\u6BB5\u7531\u4E3B agent \u81EA\u5DF1\u6267\u884C\u3002`",
+    "        ? `\u5F53 prompt \u8868\u8FBE\u63A8\u8FDB\u610F\u56FE\uFF08\u7EE7\u7EED / \u786E\u8BA4 / \u5177\u4F53\u6539\u52A8\u8BF7\u6C42\uFF09\u65F6\uFF0C\u4F60\u5FC5\u987B\u4F7F\u7528 Task tool spawn ${recommendedAgent} sub-agent \u63A5\u7BA1\u5F53\u524D\u9636\u6BB5\uFF1Bexecute \u9636\u6BB5\u4ECD\u7531\u4E3B agent \u81EA\u5DF1\u6267\u884C\u3002\u82E5 prompt \u662F\u6F84\u6E05\u95EE\u9898\u6216\u95F2\u804A\uFF0C\u5BF9\u8BDD\u56DE\u5E94\u5373\u53EF\uFF0C\u4E0D\u8981 spawn sub-agent\u3002`",
     "        : null,",
     "    ].filter(Boolean);",
     "    return lines.join('\\n');",
     "  }",
     "  if (result?.action === 'delegate_to_planner' && safePrompt) {",
     "    if (!recommendedAgent) {",
-    "      return '\u68C0\u6D4B\u5230\u65B0\u4EFB\u52A1\uFF0C\u4F46 .harness/agents/ \u4E2D\u65E0\u53EF\u7528 sub-agent\uFF08requirement \u89D2\u8272\u672A\u542F\u7528\uFF09\u3002\u8BF7\u68C0\u67E5 manifest \u914D\u7F6E\u3002';",
+    "      return '[Harnessly full preset] \u68C0\u6D4B\u5230\u65B0 full \u4EFB\u52A1\uFF0C\u4F46 .harness/agents/ \u4E2D\u65E0\u53EF\u7528 sub-agent\uFF08requirement \u89D2\u8272\u672A\u542F\u7528\uFF09\u3002\u8BF7\u68C0\u67E5 manifest \u914D\u7F6E\u3002';",
     "    }",
     "    return [",
-    "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0\u4EFB\u52A1\u3002',",
-    "      `\u8BF7 spawn custom agent named ${recommendedAgent}\uFF0C\u7531\u5B83\u5B8C\u6210 SPEC \u9636\u6BB5\u9700\u6C42\u6F84\u6E05\u4E0E\u53EF\u9A8C\u6536\u70B9\u5217\u4E3E\u3002`,",
+    "      '[Harnessly full preset] \u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0 full \u4EFB\u52A1\u3002',",
+    "      `\u63A8\u8FDB\u4EFB\u52A1\u65F6\u4F60\u5FC5\u987B spawn custom agent named ${recommendedAgent}\uFF0C\u7531\u5B83\u5B8C\u6210 SPEC \u9636\u6BB5\u9700\u6C42\u6F84\u6E05\u4E0E\u53EF\u9A8C\u6536\u70B9\u5217\u4E3E\u3002`,",
     "      `${recommendedAgent} \u5FC5\u987B\u751F\u6210\u6216\u5B9A\u4F4D .harness/tasks/<task-id>/contract.yaml \u4E0E plan.md\uFF1B\u4E0D\u8981\u53EA\u8FD4\u56DE\u53E3\u5934\u8BA1\u5212\u3002`,",
     "      '\u5982\u5F53\u524D\u5BBF\u4E3B\u65E0\u6CD5\u7A33\u5B9A\u8C03\u7528 sub-agent\uFF0C\u518D\u6309 repo \u914D\u7F6E\u964D\u7EA7\u5230 hook / command bridge / manual-headless\u3002',",
     "    ].join('\\n');",
@@ -4399,17 +4478,18 @@ function renderClaudeCodeHookIo(manifest) {
     "  if (result?.action === 'create_task' && safePrompt) {",
     "    if (result?.taskCreated && result?.taskId) {",
     "      return [",
-    "        'Harnessly \u5DF2\u4E3A\u8FD9\u6761\u8F93\u5165\u81EA\u52A8\u521B\u5EFA task\uFF0C\u5E76\u751F\u6210 contract / plan\u3002',",
+    "        '[Harnessly full preset] \u5DF2\u4E3A\u8FD9\u6761\u8F93\u5165\u81EA\u52A8\u521B\u5EFA full \u4EFB\u52A1\uFF0C\u5E76\u751F\u6210 contract / plan\u3002',",
     "        `- task_id: ${result.taskId}`,",
     "        result.contractPath ? `- contract: ${result.contractPath}` : null,",
     "        result.planPath ? `- plan: ${result.planPath}` : null,",
+    "        '\u63A8\u8FDB\u4EFB\u52A1\u65F6\u4F60\u5FC5\u987B spawn `harness-requirement` sub-agent \u63A5\u7BA1 spec \u9636\u6BB5\u4EA7\u7269\u6F84\u6E05\uFF0C\u4E0D\u8981\u81EA\u5DF1\u76F4\u63A5\u5199 requirement.md / design.md\u3002',",
     "        '\u8BF7\u5148\u57FA\u4E8E contract / plan \u63A7\u5236\u8303\u56F4\uFF0C\u518D\u7EE7\u7EED\u6267\u884C\u3002',",
     "      ].filter(Boolean).join('\\n');",
     "    }",
     "    return [",
-    "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0\u4EFB\u52A1\u3002',",
+    "      '[Harnessly full preset] \u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0 full \u4EFB\u52A1\u3002',",
     "      `\u5728\u771F\u6B63\u7F16\u7801\u524D\uFF0C\u8BF7\u5148\u6267\u884C Harnessly contract \u6D41\u7A0B\uFF1Aharnessly run --dry-run ${quotedPrompt}`,",
-    "      '\u786E\u8BA4 contract \u4E0E plan \u540E\uFF0C\u518D\u7EE7\u7EED\u6267\u884C\u3002',",
+    "      '\u786E\u8BA4 contract \u4E0E plan \u540E\uFF0C\u518D\u7EE7\u7EED\u6267\u884C\uFF1B\u63A8\u8FDB SPEC \u9636\u6BB5\u5FC5\u987B spawn `harness-requirement` sub-agent\u3002',",
     "    ].join('\\n');",
     "  }",
     "  return '';",
@@ -4423,9 +4503,13 @@ function renderClaudeCodeHookIo(manifest) {
     "    const stageHint = result.lastFailureStage",
     "      ? `\\n\u5931\u8D25\u4F4D\u7F6E\uFF1A${result.lastFailureStage}`",
     '      : (result.activeStage ? `\\n\u5F53\u524D\u9636\u6BB5\uFF1A${result.activeStage}` : "");',
+    "    const blockCount = typeof result.blockCount === 'number' ? result.blockCount : 0;",
+    "    const blockEscalation = blockCount >= 3",
+    "      ? `\\n[\u5DF2\u88AB\u963B\u65AD ${blockCount} \u6B21] \u5EFA\u8BAE\u4EBA\u5DE5\u4ECB\u5165\uFF1A\u68C0\u67E5 contract.scope.exclude \u662F\u5426\u5408\u7406\u3001\u662F\u5426\u5B58\u5728\u5DE5\u5177\u8BEF\u5224\uFF1B\u5FC5\u8981\u65F6\u8FD0\u884C \\`harnessly retry\\` \u91CD\u7F6E\u4EFB\u52A1\u72B6\u6001\u3002`",
+    "      : '';",
     "    return {",
     "      decision: 'block',",
-    "      reason: `Harnessly completion gate \u672A\u901A\u8FC7\uFF1A${result.reason}${stageHint}${agentHint}${evalCommand}${nextStep}`,",
+    "      reason: `Harnessly completion gate \u672A\u901A\u8FC7\uFF1A${result.reason}${stageHint}${agentHint}${evalCommand}${nextStep}${blockEscalation}`,",
     "    };",
     "  }",
     "  return {",
@@ -4574,6 +4658,26 @@ function renderClaudeCodeSettings(_manifest, workDir) {
   const repoRoot = resolveRepoRoot(workDir);
   return `${JSON.stringify(
     {
+      // v2.1: 信任 workspace 默认放行，删除/不可逆操作 ask 人工确认。
+      // Harnessly 的真护栏在 hook 层（artifact-guard / completion-gate / scope-check），
+      // permission 层放行 bash 不削弱安全性，只去掉逐条确认噪音。
+      // 注意：Bash 规则是前缀匹配，复合命令（如 `echo x && rm -rf y`）绕不过 ask ——
+      // 删除的最终兜底应靠 sandbox 本身（git / 容器 / 文件系统快照），ask 仅降低误删概率。
+      permissions: {
+        defaultMode: "acceptEdits",
+        allow: ["Bash"],
+        ask: [
+          "Bash(rm *)",
+          "Bash(rmdir *)",
+          "Bash(find * -delete*)",
+          "Bash(git clean *)",
+          "Bash(git reset --hard*)",
+          "Bash(git push --force*)",
+          "Bash(git push -f *)",
+          "Bash(truncate *)",
+          "Bash(dd *)"
+        ]
+      },
       hooks: {
         SessionStart: [
           {
@@ -4810,25 +4914,31 @@ function renderCodexHookIo(manifest) {
     "  const quotedPrompt = JSON.stringify(safePrompt);",
     "  const recommendedAgent = result?.recommendedAgent || null;",
     "  const activeStage = result?.activeStage || null;",
+    "  // v2.1 (SPEC \xA76.4.4 + P1 spec \xA74.8.1): lite preset \u5B8C\u5168\u4E0D\u6CE8\u5165\u3002",
+    "  // \u4E09\u9636\u6BB5\u7531\u4E3B agent \u76F4\u63A5\u627F\u62C5\uFF0C\u4E0D\u9700\u8981 sub-agent\uFF1B\u6CE8\u5165\u4F1A\u6C61\u67D3\u4E0A\u4E0B\u6587\u3002",
+    "  const preset = result?.preset || 'lite';",
+    "  if (preset === 'lite') {",
+    "    return '';",
+    "  }",
     "  if (result?.action === 'resume_task' && result?.activeTaskId) {",
     "    const lines = [",
-    "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u7EED\u63A5\u5F53\u524D\u4EFB\u52A1\u3002',",
+    "      '[Harnessly full preset] \u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u7EED\u63A5\u5F53\u524D full \u4EFB\u52A1\u3002',",
     "      `- active_task_id: ${result.activeTaskId}`,",
     "      activeStage ? `- active_stage: ${activeStage}` : null,",
     "      '\u8BF7\u4F18\u5148\u6CBF\u7528\u5F53\u524D active task \u7EE7\u7EED\uFF0C\u800C\u4E0D\u662F\u65B0\u5EFA\u4EFB\u52A1\u3002',",
     "      recommendedAgent",
-    "        ? `\u63A8\u8350\u7531 ${recommendedAgent} \u63A5\u624B\u5F53\u524D\u9636\u6BB5\uFF1Bexecute \u9636\u6BB5\u7531\u4E3B agent \u81EA\u5DF1\u6267\u884C\u3002`",
+    "        ? `\u5F53 prompt \u8868\u8FBE\u63A8\u8FDB\u610F\u56FE\uFF08\u7EE7\u7EED / \u786E\u8BA4 / \u5177\u4F53\u6539\u52A8\u8BF7\u6C42\uFF09\u65F6\uFF0C\u4F60\u5FC5\u987B\u4F7F\u7528 Task tool spawn ${recommendedAgent} sub-agent \u63A5\u7BA1\u5F53\u524D\u9636\u6BB5\uFF1Bexecute \u9636\u6BB5\u4ECD\u7531\u4E3B agent \u81EA\u5DF1\u6267\u884C\u3002\u82E5 prompt \u662F\u6F84\u6E05\u95EE\u9898\u6216\u95F2\u804A\uFF0C\u5BF9\u8BDD\u56DE\u5E94\u5373\u53EF\uFF0C\u4E0D\u8981 spawn sub-agent\u3002`",
     "        : null,",
     "    ].filter(Boolean);",
     "    return lines.join('\\n');",
     "  }",
     "  if (result?.action === 'delegate_to_planner' && safePrompt) {",
     "    if (!recommendedAgent) {",
-    "      return '\u68C0\u6D4B\u5230\u65B0\u4EFB\u52A1\uFF0C\u4F46 .harness/agents/ \u4E2D\u65E0\u53EF\u7528 sub-agent\uFF08requirement \u89D2\u8272\u672A\u542F\u7528\uFF09\u3002\u8BF7\u68C0\u67E5 manifest \u914D\u7F6E\u3002';",
+    "      return '[Harnessly full preset] \u68C0\u6D4B\u5230\u65B0 full \u4EFB\u52A1\uFF0C\u4F46 .harness/agents/ \u4E2D\u65E0\u53EF\u7528 sub-agent\uFF08requirement \u89D2\u8272\u672A\u542F\u7528\uFF09\u3002\u8BF7\u68C0\u67E5 manifest \u914D\u7F6E\u3002';",
     "    }",
     "    return [",
-    "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0\u4EFB\u52A1\u3002',",
-    "      `\u8BF7 spawn custom agent named ${recommendedAgent}\uFF0C\u7531\u5B83\u5B8C\u6210 SPEC \u9636\u6BB5\u9700\u6C42\u6F84\u6E05\u4E0E\u53EF\u9A8C\u6536\u70B9\u5217\u4E3E\u3002`,",
+    "      '[Harnessly full preset] \u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0 full \u4EFB\u52A1\u3002',",
+    "      `\u63A8\u8FDB\u4EFB\u52A1\u65F6\u4F60\u5FC5\u987B spawn custom agent named ${recommendedAgent}\uFF0C\u7531\u5B83\u5B8C\u6210 SPEC \u9636\u6BB5\u9700\u6C42\u6F84\u6E05\u4E0E\u53EF\u9A8C\u6536\u70B9\u5217\u4E3E\u3002`,",
     "      `${recommendedAgent} \u5FC5\u987B\u751F\u6210\u6216\u5B9A\u4F4D .harness/tasks/<task-id>/contract.yaml \u4E0E plan.md\uFF1B\u4E0D\u8981\u53EA\u8FD4\u56DE\u53E3\u5934\u8BA1\u5212\u3002`,",
     "      '\u5982\u5F53\u524D\u5BBF\u4E3B\u65E0\u6CD5\u7A33\u5B9A\u8C03\u7528 sub-agent\uFF0C\u518D\u6309 repo \u914D\u7F6E\u964D\u7EA7\u5230 hook / command bridge / manual-headless\u3002',",
     "    ].join('\\n');",
@@ -4836,17 +4946,18 @@ function renderCodexHookIo(manifest) {
     "  if (result?.action === 'create_task' && safePrompt) {",
     "    if (result?.taskCreated && result?.taskId) {",
     "      return [",
-    "        'Harnessly \u5DF2\u4E3A\u8FD9\u6761\u8F93\u5165\u81EA\u52A8\u521B\u5EFA task\uFF0C\u5E76\u751F\u6210 contract / plan\u3002',",
+    "        '[Harnessly full preset] \u5DF2\u4E3A\u8FD9\u6761\u8F93\u5165\u81EA\u52A8\u521B\u5EFA full \u4EFB\u52A1\uFF0C\u5E76\u751F\u6210 contract / plan\u3002',",
     "        `- task_id: ${result.taskId}`,",
     "        result.contractPath ? `- contract: ${result.contractPath}` : null,",
     "        result.planPath ? `- plan: ${result.planPath}` : null,",
+    "        '\u63A8\u8FDB\u4EFB\u52A1\u65F6\u4F60\u5FC5\u987B spawn `harness-requirement` sub-agent \u63A5\u7BA1 spec \u9636\u6BB5\u4EA7\u7269\u6F84\u6E05\uFF0C\u4E0D\u8981\u81EA\u5DF1\u76F4\u63A5\u5199 requirement.md / design.md\u3002',",
     "        '\u8BF7\u5148\u57FA\u4E8E contract / plan \u63A7\u5236\u8303\u56F4\uFF0C\u518D\u7EE7\u7EED\u6267\u884C\u3002',",
     "      ].filter(Boolean).join('\\n');",
     "    }",
     "    return [",
-    "      '\u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0\u4EFB\u52A1\u3002',",
+    "      '[Harnessly full preset] \u68C0\u6D4B\u5230\u8FD9\u6761\u8F93\u5165\u66F4\u50CF\u65B0 full \u4EFB\u52A1\u3002',",
     "      `\u5728\u771F\u6B63\u7F16\u7801\u524D\uFF0C\u8BF7\u5148\u6267\u884C Harnessly contract \u6D41\u7A0B\uFF1Aharnessly run --dry-run ${quotedPrompt}`,",
-    "      '\u786E\u8BA4 contract \u4E0E plan \u540E\uFF0C\u518D\u7EE7\u7EED\u6267\u884C\u3002',",
+    "      '\u786E\u8BA4 contract \u4E0E plan \u540E\uFF0C\u518D\u7EE7\u7EED\u6267\u884C\uFF1B\u63A8\u8FDB SPEC \u9636\u6BB5\u5FC5\u987B spawn `harness-requirement` sub-agent\u3002',",
     "    ].join('\\n');",
     "  }",
     "  return '';",
@@ -4860,9 +4971,13 @@ function renderCodexHookIo(manifest) {
     "    const stageHint = result.lastFailureStage",
     "      ? `\\n\u5931\u8D25\u4F4D\u7F6E\uFF1A${result.lastFailureStage}`",
     '      : (result.activeStage ? `\\n\u5F53\u524D\u9636\u6BB5\uFF1A${result.activeStage}` : "");',
+    "    const blockCount = typeof result.blockCount === 'number' ? result.blockCount : 0;",
+    "    const blockEscalation = blockCount >= 3",
+    "      ? `\\n[\u5DF2\u88AB\u963B\u65AD ${blockCount} \u6B21] \u5EFA\u8BAE\u4EBA\u5DE5\u4ECB\u5165\uFF1A\u68C0\u67E5 contract.scope.exclude \u662F\u5426\u5408\u7406\u3001\u662F\u5426\u5B58\u5728\u5DE5\u5177\u8BEF\u5224\uFF1B\u5FC5\u8981\u65F6\u8FD0\u884C \\`harnessly retry\\` \u91CD\u7F6E\u4EFB\u52A1\u72B6\u6001\u3002`",
+    "      : '';",
     "    return {",
     "      status: 'block',",
-    "      reason: `Harnessly completion gate \u672A\u901A\u8FC7\uFF1A${result.reason}${stageHint}${agentHint}${evalCommand}${nextStep}`,",
+    "      reason: `Harnessly completion gate \u672A\u901A\u8FC7\uFF1A${result.reason}${stageHint}${agentHint}${evalCommand}${nextStep}${blockEscalation}`,",
     "    };",
     "  }",
     "  return {",
@@ -5199,16 +5314,6 @@ function getIntakeFeedbackPath(workDir) {
 function getLastIntakeDecisionPath(workDir) {
   return path18.join(getHarnessPaths(workDir).harnessDir, LAST_DECISION_FILENAME);
 }
-async function writeLastIntakeDecision(workDir, decision) {
-  const filePath = getLastIntakeDecisionPath(workDir);
-  await mkdir12(path18.dirname(filePath), { recursive: true });
-  await writeFile11(
-    filePath,
-    `${JSON.stringify({ ...decision, createdAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
-`,
-    "utf8"
-  );
-}
 async function readLastIntakeDecision(workDir) {
   try {
     return JSON.parse(await readFile14(getLastIntakeDecisionPath(workDir), "utf8"));
@@ -5258,53 +5363,6 @@ async function rewriteIntakeFeedback(workDir, entries) {
   const filePath = getIntakeFeedbackPath(workDir);
   await mkdir12(path18.dirname(filePath), { recursive: true });
   await writeFile11(filePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + (entries.length ? "\n" : ""), "utf8");
-}
-function trigrams(value) {
-  const normalized = normalizePromptForFeedback(value);
-  const padded = `  ${normalized}  `;
-  const result = /* @__PURE__ */ new Set();
-  for (let i = 0; i < padded.length - 2; i += 1) {
-    result.add(padded.slice(i, i + 3));
-  }
-  return result;
-}
-function similarity(left, right) {
-  const a = trigrams(left);
-  const b = trigrams(right);
-  if (a.size === 0 || b.size === 0) return 0;
-  const intersection = [...a].filter((item) => b.has(item)).length;
-  return intersection / (/* @__PURE__ */ new Set([...a, ...b])).size;
-}
-function classifyByIntakeFeedback(prompt, entries) {
-  const normalized = normalizePromptForFeedback(prompt);
-  const exact = [...entries].reverse().find((entry) => entry.normalizedPrompt === normalized);
-  if (exact) {
-    return {
-      action: exact.actualAction,
-      reason: "learned_exact_feedback",
-      confidence: 1,
-      matchedEntryIds: [exact.id]
-    };
-  }
-  const similarChatEntries = entries.map((entry) => ({ entry, score: similarity(normalized, entry.normalizedPrompt) })).filter(({ entry, score }) => entry.actualAction === "chat" && score >= 0.85).sort((a, b) => b.score - a.score);
-  if (similarChatEntries.length > 0) {
-    return {
-      action: "chat",
-      reason: "learned_similar_feedback",
-      confidence: similarChatEntries[0].score,
-      matchedEntryIds: similarChatEntries.slice(0, 3).map(({ entry }) => entry.id)
-    };
-  }
-  const weakerChatEntries = entries.map((entry) => ({ entry, score: similarity(normalized, entry.normalizedPrompt) })).filter(({ entry, score }) => entry.actualAction === "chat" && score >= 0.72).sort((a, b) => b.score - a.score);
-  if (weakerChatEntries.length >= 2) {
-    return {
-      action: "chat",
-      reason: "learned_similar_feedback",
-      confidence: weakerChatEntries[0].score,
-      matchedEntryIds: weakerChatEntries.slice(0, 3).map(({ entry }) => entry.id)
-    };
-  }
-  return null;
 }
 
 // src/commands/intake.ts
@@ -5780,144 +5838,80 @@ function isHostInternalPrompt(prompt) {
   const normalized = prompt.trim();
   return normalized.includes("You will be presented with a user prompt") && normalized.includes("short title for a task") && normalized.includes("Generate a concise UI title");
 }
-function containsAny(prompt, patterns) {
-  return patterns.some((pattern) => pattern.test(prompt));
-}
 function isExplicitNewTask(prompt) {
   return /(新建.*任务|开个新|独立任务|创建.*任务|新需求|另起.*任务|不.*继续)/i.test(prompt);
 }
-function detectChangeKind(prompt) {
-  const normalized = prompt.trim();
-  if (containsAny(normalized, [/(修复|修一下|bug|报错|失败|异常|不对|不能|无法|fix)/i])) {
-    return "bug_fix";
-  }
-  if (containsAny(normalized, [/(文档|README|说明|设计文档|试用文档|更新.*文档|补.*文档)/i])) {
-    return "doc_change";
-  }
-  if (containsAny(normalized, [/(配置|config|yaml|toml|json|hook|模型配置|设置)/i])) {
-    return "config_change";
-  }
-  if (containsAny(normalized, [/(测试|用例|test|spec|覆盖)/i])) {
-    return "test_change";
-  }
-  if (containsAny(normalized, [/(重构|refactor|整理代码|抽象)/i])) {
-    return "refactor";
-  }
-  if (containsAny(normalized, [/(实现|新增|添加|修改|删除|接入|落地|改造|优化|调整|升级|补上|补充|更新|implement|add|update|remove)/i])) {
-    return "code_change";
-  }
-  return null;
-}
 function isQuestionOnly(prompt) {
   const normalized = prompt.trim();
-  const hasQuestionIntent = containsAny(normalized, [
+  const patterns = [
     /^(为什么|为何|怎么|如何|哪里|在哪|能不能解释|请解释|分析一下|看看|查一下)/i,
-    /(是什么|有什么区别|原因|怎么看|如何验证|怎么验证|是否|有没有|\?)$/i
-  ]);
-  return hasQuestionIntent && detectChangeKind(normalized) === null;
+    /(是什么|有什么区别|原因|怎么看|如何验证|怎么验证|是否|有没有|依据什么)/i,
+    /[?？]$/
+  ];
+  return patterns.some((p) => p.test(normalized));
 }
-function detectRisk(prompt, taskKind) {
-  const normalized = prompt.trim();
-  if (containsAny(normalized, [/(数据库|迁移|权限|认证|支付|安全|删除数据|生产|破坏性|高风险|回滚|schema|migration)/i])) {
-    return "high";
+function detectPresetMarker(prompt) {
+  if (/\[harness:feat\]/i.test(prompt)) {
+    return { preset: "full", presetSource: "prompt_marker" };
   }
-  if (taskKind === "refactor" || containsAny(normalized, [/(跨模块|架构|大范围|重构|多个项目|主路径|runtime)/i])) {
-    return "medium";
-  }
-  return "low";
+  return { preset: "lite", presetSource: "slash_command" };
+}
+function stripPresetMarker(prompt) {
+  return prompt.replace(/\[harness:feat\]/gi, "").trim();
 }
 function classifyPrompt(prompt, hasActiveTask, allowFallbackCreate) {
   if (!prompt.trim()) {
     return {
       action: "chat",
       reason: "empty_prompt",
-      taskKind: "empty",
-      risk: "low",
-      confidence: 1
+      preset: "lite",
+      presetSource: null
     };
   }
   if (isHostInternalPrompt(prompt)) {
     return {
       action: "chat",
       reason: "host_internal_prompt",
-      taskKind: "host_internal",
-      risk: "low",
-      confidence: 1
+      preset: "lite",
+      presetSource: null
     };
   }
+  const { preset, presetSource } = detectPresetMarker(prompt);
+  const hasMarker = presetSource === "prompt_marker";
   if (hasActiveTask) {
-    if (isExplicitNewTask(prompt)) {
-      const taskKind2 = detectChangeKind(prompt);
+    if (isExplicitNewTask(prompt) || hasMarker) {
       return {
         action: allowFallbackCreate ? "create_task" : "delegate_to_planner",
         reason: "explicit_new_task",
-        taskKind: taskKind2 ?? "code_change",
-        risk: taskKind2 ? detectRisk(prompt, taskKind2) : "medium",
-        confidence: 0.85
+        preset,
+        presetSource
       };
     }
     if (isQuestionOnly(prompt)) {
-      return {
-        action: "chat",
-        reason: "matched_question_intent",
-        taskKind: "question",
-        risk: "low",
-        confidence: 0.95
-      };
+      return { action: "chat", reason: "question_intent", preset: "lite", presetSource: null };
     }
     return {
       action: "resume_task",
       reason: "resume_active_task",
-      taskKind: "resume",
-      risk: "low",
-      confidence: 0.85
+      preset: "lite",
+      // resume 不应用 marker；preset 跟随 active task
+      presetSource: null
     };
   }
   if (isQuestionOnly(prompt)) {
-    return {
-      action: "chat",
-      reason: "matched_question_intent",
-      taskKind: "question",
-      risk: "low",
-      confidence: 0.95
-    };
-  }
-  const taskKind = detectChangeKind(prompt);
-  if (taskKind) {
-    return {
-      action: allowFallbackCreate ? "create_task" : "delegate_to_planner",
-      reason: "matched_change_intent",
-      taskKind,
-      risk: detectRisk(prompt, taskKind),
-      confidence: 0.9
-    };
+    return { action: "chat", reason: "question_intent", preset: "lite", presetSource: null };
   }
   return {
-    action: "chat",
-    reason: "ambiguous_intent",
-    taskKind: "question",
-    risk: "low",
-    confidence: 0.4
+    action: allowFallbackCreate ? "create_task" : "delegate_to_planner",
+    reason: "change_intent",
+    preset,
+    presetSource
   };
 }
-function applyLearnedDecision(base, prompt, feedbackEntries) {
-  if (base.reason === "empty_prompt" || base.reason === "host_internal_prompt" || base.reason === "resume_active_task") {
-    return base;
+async function resolveRecommendedAgent(workDir, action, activeStage, preset) {
+  if (preset === "lite") {
+    return null;
   }
-  const learned = classifyByIntakeFeedback(prompt, feedbackEntries);
-  if (!learned) {
-    return base;
-  }
-  return {
-    action: learned.action,
-    reason: learned.reason,
-    taskKind: learned.action === "chat" ? "question" : base.taskKind,
-    risk: base.risk,
-    confidence: learned.confidence,
-    learnedFrom: learned.matchedEntryIds
-  };
-}
-async function resolveRecommendedAgent(workDir, action, activeStage) {
   if (action !== "delegate_to_planner" && action !== "resume_task") {
     return null;
   }
@@ -5935,47 +5929,53 @@ async function runHostUserPromptSubmit(flags, positionals) {
   const config = await loadHarnessConfig(workDir);
   const activeTaskId = await readActiveTaskId3(workDir);
   let activeStage = null;
+  let activePreset = null;
   if (activeTaskId) {
     try {
       const ctx = await manager.load(activeTaskId, workDir);
       activeStage = ctx.state.currentStage;
+      activePreset = ctx.state.preset;
     } catch {
     }
   }
   const pending = await readPendingDelegation(workDir);
-  const feedbackEntries = await loadIntakeFeedback(workDir);
-  const builtinDecision = classifyPrompt(
+  const decision = classifyPrompt(
     prompt,
     Boolean(activeTaskId),
     config.fallbackCreateTaskWithoutPlanner || pending !== null
   );
-  const decision = applyLearnedDecision(builtinDecision, prompt, feedbackEntries);
   const { action } = decision;
-  const recommendedAgent = await resolveRecommendedAgent(workDir, action, activeStage);
+  const effectivePreset = (action === "resume_task" || action === "chat") && activePreset !== null ? activePreset : decision.preset;
+  const recommendedAgent = await resolveRecommendedAgent(
+    workDir,
+    action,
+    activeStage,
+    effectivePreset
+  );
   await appendHarnessEvent(workDir, {
     type: "host.intake_decision",
     host: config.defaultHost,
     action,
     reason: decision.reason,
-    taskKind: decision.taskKind,
-    risk: decision.risk,
-    confidence: decision.confidence,
-    learnedFrom: decision.learnedFrom,
+    preset: effectivePreset,
+    presetSource: decision.presetSource,
     activeTaskId,
     activeStage,
     recommendedAgent,
     taskCreated: false
   });
-  await writeLastIntakeDecision(workDir, {
-    prompt,
-    action,
-    reason: decision.reason,
-    taskKind: decision.taskKind,
-    risk: decision.risk
-  });
   if (action === "create_task") {
     await clearPendingDelegation(workDir);
-    const ctx = await manager.create(prompt, workDir);
+    const ctx = await manager.create(stripPresetMarker(prompt), workDir, {
+      preset: decision.preset,
+      presetSource: decision.presetSource ?? "slash_command"
+    });
+    await appendHarnessEvent(workDir, {
+      type: "task.preset_set",
+      task_id: ctx.taskId,
+      preset: decision.preset,
+      source: decision.presetSource ?? "slash_command"
+    });
     const engine = new WorkflowEngine(manager);
     await engine.run(ctx, {
       adapterKind: ctx.config.adapterKind,
@@ -5988,6 +5988,7 @@ async function runHostUserPromptSubmit(flags, positionals) {
       action,
       activeTaskId: ctx.taskId,
       taskCreated: true,
+      preset: decision.preset,
       contractPath: `${ctx.taskDir}/contract.yaml`,
       planPath: `${ctx.taskDir}/plan.md`
     });
@@ -5997,10 +5998,8 @@ async function runHostUserPromptSubmit(flags, positionals) {
       activeStage: ctx.state.currentStage,
       action,
       reason: decision.reason,
-      taskKind: decision.taskKind,
-      risk: decision.risk,
-      confidence: decision.confidence,
-      learnedFrom: decision.learnedFrom,
+      preset: decision.preset,
+      presetSource: decision.presetSource,
       taskCreated: true,
       taskId: ctx.taskId,
       contractPath: `${ctx.taskDir}/contract.yaml`,
@@ -6020,10 +6019,8 @@ async function runHostUserPromptSubmit(flags, positionals) {
     activeStage,
     action,
     reason: decision.reason,
-    taskKind: decision.taskKind,
-    risk: decision.risk,
-    confidence: decision.confidence,
-    learnedFrom: decision.learnedFrom,
+    preset: effectivePreset,
+    presetSource: decision.presetSource,
     taskCreated: false,
     recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,
@@ -6402,6 +6399,68 @@ async function runTemplatePromote(flags, positionals) {
   ]);
 }
 
+// src/commands/upgrade.ts
+async function runUpgrade(flags) {
+  const workDir = process.cwd();
+  const explicitTaskId = typeof flags["task-id"] === "string" ? flags["task-id"] : void 0;
+  const targetTaskId = explicitTaskId ?? await readActiveTaskId3(workDir);
+  if (!targetTaskId) {
+    process.stderr.write(
+      "\u6CA1\u6709 active task\uFF0C\u4E14\u672A\u6307\u5B9A --task-id\u3002\u5148\u521B\u5EFA\u4EFB\u52A1\u6216\u7528 --task-id <id> \u6307\u5B9A\u8981\u5347\u6863\u7684\u4EFB\u52A1\u3002\n"
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const manager = new TaskManager();
+  const ctx = await manager.load(targetTaskId, workDir);
+  if (ctx.state.preset !== "lite") {
+    process.stderr.write(
+      `\u4EFB\u52A1 ${targetTaskId} \u5F53\u524D preset \u4E3A ${ctx.state.preset}\uFF0C\u4E0D\u5141\u8BB8\u91CD\u590D\u5347\u6863\u3002SPEC \xA76.4.5 \u5347\u6863\u4EC5\u53EF\u53D1\u751F\u4E00\u6B21\u3002
+`
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (ctx.state.status !== "active") {
+    process.stderr.write(
+      `\u4EFB\u52A1 ${targetTaskId} \u5F53\u524D\u72B6\u6001\u4E3A ${ctx.state.status}\uFF0C\u53EA\u6709 active \u4EFB\u52A1\u53EF\u5347\u6863\u3002
+`
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  ctx.state = {
+    ...ctx.state,
+    preset: "full",
+    presetSource: "upgrade",
+    presetSetAt: now,
+    currentStage: "design",
+    currentOwner: "designer",
+    updatedAt: now
+  };
+  await manager.saveState(ctx);
+  const config = await loadHarnessConfig(workDir);
+  await appendHarnessEvent(workDir, {
+    type: "task.preset_upgraded",
+    task_id: targetTaskId,
+    from: "lite",
+    to: "full",
+    host: config.defaultHost
+  });
+  printJson({
+    action: "upgraded",
+    taskId: targetTaskId,
+    from: "lite",
+    to: "full",
+    currentStage: "design",
+    currentOwner: "designer",
+    upgradedAt: now,
+    nextStep: "spawn_harness_designer_or_run_eval",
+    note: "\u65E2\u6709 requirement.md / contract.yaml / \u4EE3\u7801 diff / implementation-notes.md \u4FDD\u7559\u4E0D\u53D8\u3002Designer sub-agent \u9700\u57FA\u4E8E\u65E2\u6709\u4EA7\u7269\u8865\u51FA design.md \u4E0E task-breakdown.md\u3002"
+  });
+}
+
 // src/utils/args.ts
 var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
   "dry-run",
@@ -6455,6 +6514,7 @@ function printUsage() {
       '  harnessly run --dry-run [--skip-confirm] "<goal>"',
       "  harnessly run --resume <task-id>",
       '  harnessly run [--skip-confirm] --adapter custom|codex --adapter-command "<cmd>" "<goal>"',
+      "  harnessly upgrade [--task-id <task-id>]",
       "  harnessly template promote [task-id] [--name <template-name>]",
       "  harnessly archive promote <task-id> --topic=<slug> --files=<list> [--mode=<mode>] [--json]",
       "  harnessly archive list [--json]",
@@ -6510,6 +6570,10 @@ async function runCli(argv) {
   }
   if (command === "retry") {
     await runRetry(parsed.flags, [subcommand, ...rest].filter(Boolean));
+    return;
+  }
+  if (command === "upgrade") {
+    await runUpgrade(parsed.flags);
     return;
   }
   if (command === "template" && subcommand === "promote") {

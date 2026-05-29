@@ -149,6 +149,8 @@ stages:
 
 PM 路由仍按 v3 §4.5 的纪律执行：自动按 stage 切换 + 不允许下游改上游 + 失败时打回。
 
+**v2.1 修订（Workflow Preset）**：上述六阶段是 `full` preset 的形态。v3-core 默认 preset 为 `lite`（`spec` → `execute` → `test` 三阶段），用户通过 `/harness-feat <goal>` slash command 显式启动 `full`。`lite` 模式不产出 `design.md` / `task-breakdown.md` / `review.md` / `commit-summary.md` / `report.json`；三阶段对应的角色（requirement / developer / tester）由主 agent 直接承担，**不要求 spawn 独立 sub-agent**（sub-agent 物理隔离仅 `full` 模式要求，详见 SPEC §8）。baseline-diff / scope-check / structure-check / 跨任务发现四道物理护栏在 `lite` 模式下不受影响。完整规范见 SPEC §6.4；asset promotion 在 `lite` 模式下的触发点调整见 SPEC §22.2.1。
+
 ### 3.3 Execute Boundary
 
 继承 v3 §5.4，无修订。

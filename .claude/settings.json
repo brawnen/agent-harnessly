@@ -1,4 +1,21 @@
 {
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash"
+    ],
+    "ask": [
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "Bash(find * -delete*)",
+      "Bash(git clean *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(truncate *)",
+      "Bash(dd *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

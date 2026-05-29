@@ -20,7 +20,9 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  DEFAULT_PRESET: () => DEFAULT_PRESET,
   HARNESSLY_VERSION: () => HARNESSLY_VERSION,
+  PRESET_STAGE_MAP: () => PRESET_STAGE_MAP,
   SHARED_PACKAGE_NAME: () => SHARED_PACKAGE_NAME,
   acceptanceCriterionSchema: () => acceptanceCriterionSchema,
   acceptanceVerifierSchema: () => acceptanceVerifierSchema,
@@ -52,6 +54,7 @@ __export(index_exports, {
   parseStringList: () => parseStringList,
   parseTaskReport: () => parseTaskReport,
   parseTemplateDraft: () => parseTemplateDraft,
+  presetSourceSchema: () => presetSourceSchema,
   projectTypeSchema: () => projectTypeSchema,
   requiredCheckSchema: () => requiredCheckSchema,
   riskLevelSchema: () => riskLevelSchema,
@@ -77,12 +80,18 @@ __export(index_exports, {
   validateRequirementMarkdown: () => validateRequirementMarkdown,
   validateTaskReport: () => validateTaskReport,
   validateTemplateDraft: () => validateTemplateDraft,
+  workflowPresetSchema: () => workflowPresetSchema,
   workflowStageSchema: () => workflowStageSchema
 });
 module.exports = __toCommonJS(index_exports);
 var import_zod = require("zod");
 var SHARED_PACKAGE_NAME = "@brawnen/harnessly-shared";
 var HARNESSLY_VERSION = "0.1.0-alpha.0";
+var PRESET_STAGE_MAP = {
+  lite: ["spec", "execute", "test"],
+  full: ["spec", "design", "execute", "review", "test", "commit_gate"]
+};
+var DEFAULT_PRESET = "lite";
 var packageInfo = {
   name: SHARED_PACKAGE_NAME,
   version: HARNESSLY_VERSION
@@ -104,6 +113,8 @@ var riskLevelSchema = import_zod.z.enum(["low", "medium", "high"]);
 var estimatedComplexitySchema = import_zod.z.enum(["simple", "medium", "complex"]);
 var adapterKindSchema = import_zod.z.enum(["claude-code", "codex", "custom"]);
 var taskStatusSchema = import_zod.z.enum(["active", "blocked", "completed", "aborted"]);
+var workflowPresetSchema = import_zod.z.enum(["lite", "full"]);
+var presetSourceSchema = import_zod.z.enum(["slash_command", "prompt_marker", "upgrade"]);
 var workflowStageSchema = import_zod.z.enum([
   "spec",
   "design",
@@ -745,7 +756,9 @@ function parseTemplateDraft(text) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  DEFAULT_PRESET,
   HARNESSLY_VERSION,
+  PRESET_STAGE_MAP,
   SHARED_PACKAGE_NAME,
   acceptanceCriterionSchema,
   acceptanceVerifierSchema,
@@ -777,6 +790,7 @@ function parseTemplateDraft(text) {
   parseStringList,
   parseTaskReport,
   parseTemplateDraft,
+  presetSourceSchema,
   projectTypeSchema,
   requiredCheckSchema,
   riskLevelSchema,
@@ -802,5 +816,6 @@ function parseTemplateDraft(text) {
   validateRequirementMarkdown,
   validateTaskReport,
   validateTemplateDraft,
+  workflowPresetSchema,
   workflowStageSchema
 });

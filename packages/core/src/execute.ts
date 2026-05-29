@@ -79,11 +79,17 @@ export class ClaudeCodeAdapter implements Adapter {
   }
 }
 
+/**
+ * Codex adapter 默认执行命令：通过 stdin 把 prompt 文件喂给 `codex exec`。
+ * 提取为导出常量，便于单测直接断言命令拼接（不必真实跑 codex 二进制）。
+ */
+export const DEFAULT_CODEX_COMMAND = 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"';
+
 export class CodexAdapter implements Adapter {
   readonly kind = 'codex' as const;
 
   async execute(input: AdapterInput): Promise<AdapterOutput> {
-    const command = input.command?.trim() || 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"';
+    const command = input.command?.trim() || DEFAULT_CODEX_COMMAND;
     const result = await runShellCommand(command, input);
     return {
       ...result,

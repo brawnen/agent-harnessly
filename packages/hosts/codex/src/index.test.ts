@@ -6,6 +6,7 @@ import { createHostManifest } from '@brawnen/harnessly-host-shared';
 import {
   renderCodexConfig,
   renderCodexHooks,
+  renderCodexHookIo,
   renderCodexManagedFiles,
 } from './index';
 
@@ -112,5 +113,26 @@ describe('codex host renderer', () => {
 
     const agentFiles = Object.keys(files).filter((p) => p.startsWith('.codex/agents/'));
     expect(agentFiles).toEqual([]);
+  });
+
+  it('should embed blockCount-based escalation hint in buildCompletionDecision', () => {
+    // P0 v3: 反复阻断时追加"建议人工介入"提示，避免主 agent 死循环触发 Stop hook
+    const io = renderCodexHookIo(createHostManifest('codex', 'harnessly-local'));
+
+    expect(io).toContain('blockEscalation');
+    expect(io).toContain('blockCount >= 3');
+    expect(io).toContain('harnessly retry');
+    expect(io).toContain('${blockEscalation}');
+  });
+
+  it('v2.1 (SPEC §6.4.4): buildPromptSubmitContext returns empty for lite preset', () => {
+    // lite preset 由主 agent 直接承担三阶段，hook 完全不注入 spawn 指令
+    const io = renderCodexHookIo(createHostManifest('codex', 'harnessly-local'));
+
+    expect(io).toContain("const preset = result?.preset || 'lite'");
+    expect(io).toContain("if (preset === 'lite')");
+    expect(io).toContain('[Harnessly full preset]');
+    expect(io).toContain('必须使用 Task tool spawn');
+    expect(io).toContain('必须 spawn');
   });
 });

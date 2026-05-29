@@ -6,47 +6,47 @@ import {
   TaskManager,
   WorkflowEngine,
 } from '@brawnen/harnessly-core';
-import type { StageMarker } from '@brawnen/harnessly-shared';
+import type {
+  PresetSource,
+  StageMarker,
+  WorkflowPreset,
+} from '@brawnen/harnessly-shared';
 
 import { appendHarnessEvent } from '../../utils/events';
 import { readActiveTaskId } from '../../utils/hosts';
-import {
-  classifyByIntakeFeedback,
-  loadIntakeFeedback,
-  writeLastIntakeDecision,
-} from '../../utils/intake-feedback';
 import { printJson } from '../../utils/output';
-import { clearPendingDelegation, readPendingDelegation, writePendingDelegation } from '../../utils/planner-fallback';
+import {
+  clearPendingDelegation,
+  readPendingDelegation,
+  writePendingDelegation,
+} from '../../utils/planner-fallback';
 
 type PromptAction = 'chat' | 'delegate_to_planner' | 'create_task' | 'resume_task';
-type TaskKind =
-  | 'bug_fix'
-  | 'code_change'
-  | 'config_change'
-  | 'doc_change'
-  | 'test_change'
-  | 'refactor'
-  | 'question'
-  | 'host_internal'
-  | 'empty'
-  | 'resume';
-type IntakeRisk = 'low' | 'medium' | 'high';
 
+/**
+ * v2.1: 精简版意图分类结果。
+ *
+ * 相比 v2.0：
+ * - 删除 taskKind / risk / confidence / learnedFrom 字段（不再做启发式分类）
+ * - 新增 preset / presetSource 字段（按 SPEC §6.4.3 显式声明）
+ *
+ * 删除的 reason 旧值（matched_change_intent / matched_question_intent /
+ * ambiguous_intent / learned_*）合并为更少的语义：change_intent /
+ * question_intent / resume_active_task / explicit_new_task。
+ */
 interface IntakeDecision {
   action: PromptAction;
   reason:
     | 'empty_prompt'
     | 'host_internal_prompt'
     | 'resume_active_task'
-    | 'matched_change_intent'
-    | 'matched_question_intent'
-    | 'ambiguous_intent'
-    | 'learned_exact_feedback'
-    | 'learned_similar_feedback';
-  taskKind: TaskKind;
-  risk: IntakeRisk;
-  confidence: number;
-  learnedFrom?: string[];
+    | 'change_intent'
+    | 'question_intent'
+    | 'explicit_new_task';
+  /** preset 为 'lite' 是默认；'full' 由 marker 触发。chat / resume_task 时取 active task 的 preset */
+  preset: WorkflowPreset;
+  /** create_task / delegate_to_planner 时记录来源；其他 action 为 null */
+  presetSource: PresetSource | null;
 }
 
 function isHostInternalPrompt(prompt: string): boolean {
@@ -59,75 +59,67 @@ function isHostInternalPrompt(prompt: string): boolean {
   );
 }
 
-function containsAny(prompt: string, patterns: RegExp[]): boolean {
-  return patterns.some((pattern) => pattern.test(prompt));
-}
-
-/** 检测用户是否显式要求新建任务，此时即使有 active task 也应脱离旧任务 */
+/** 用户显式要求新建任务（即使已有 active task 也脱离） */
 function isExplicitNewTask(prompt: string): boolean {
   return /(新建.*任务|开个新|独立任务|创建.*任务|新需求|另起.*任务|不.*继续)/i.test(prompt);
 }
 
-function detectChangeKind(prompt: string): TaskKind | null {
-  const normalized = prompt.trim();
-
-  if (containsAny(normalized, [/(修复|修一下|bug|报错|失败|异常|不对|不能|无法|fix)/i])) {
-    return 'bug_fix';
-  }
-
-  if (containsAny(normalized, [/(文档|README|说明|设计文档|试用文档|更新.*文档|补.*文档)/i])) {
-    return 'doc_change';
-  }
-
-  if (containsAny(normalized, [/(配置|config|yaml|toml|json|hook|模型配置|设置)/i])) {
-    return 'config_change';
-  }
-
-  if (containsAny(normalized, [/(测试|用例|test|spec|覆盖)/i])) {
-    return 'test_change';
-  }
-
-  if (containsAny(normalized, [/(重构|refactor|整理代码|抽象)/i])) {
-    return 'refactor';
-  }
-
-  if (containsAny(normalized, [/(实现|新增|添加|修改|删除|接入|落地|改造|优化|调整|升级|补上|补充|更新|implement|add|update|remove)/i])) {
-    return 'code_change';
-  }
-
-  return null;
-}
-
+/**
+ * 问答类 prompt 识别 —— 不创建任务，让主 agent 自然回应。
+ *
+ * 保留这一检测的产品原因：lite 默认会创建 task，如果不区分问答 vs 变更，
+ * 任何中性 prompt 都会触发任务创建，体验上会让用户疑惑。
+ */
 function isQuestionOnly(prompt: string): boolean {
   const normalized = prompt.trim();
-  const hasQuestionIntent = containsAny(normalized, [
+  const patterns = [
     /^(为什么|为何|怎么|如何|哪里|在哪|能不能解释|请解释|分析一下|看看|查一下)/i,
-    /(是什么|有什么区别|原因|怎么看|如何验证|怎么验证|是否|有没有|\?)$/i,
-  ]);
-
-  return hasQuestionIntent && detectChangeKind(normalized) === null;
-}
-
-function detectRisk(prompt: string, taskKind: TaskKind): IntakeRisk {
-  const normalized = prompt.trim();
-
-  if (containsAny(normalized, [/(数据库|迁移|权限|认证|支付|安全|删除数据|生产|破坏性|高风险|回滚|schema|migration)/i])) {
-    return 'high';
-  }
-
-  if (taskKind === 'refactor' || containsAny(normalized, [/(跨模块|架构|大范围|重构|多个项目|主路径|runtime)/i])) {
-    return 'medium';
-  }
-
-  return 'low';
+    /(是什么|有什么区别|原因|怎么看|如何验证|怎么验证|是否|有没有|依据什么)/i,
+    /[?？]$/,
+  ];
+  return patterns.some((p) => p.test(normalized));
 }
 
 /**
- * classifyPrompt — 入口意图分类。
+ * v2.1: 检测 prompt 中的 preset marker (SPEC §6.4.3)。
  *
- * 核心原则：有 active task 时默认续接（resume_task），除非用户显式要求新任务
- * 或只是纯提问。没有 active task 时，变更类 prompt 才会触发 delegate_to_planner
- * 进入 SPEC 阶段。
+ * 触发规则：
+ * - prompt 含 `[harness:feat]`（大小写不敏感）→ full + prompt_marker
+ * - 否则 → lite + slash_command（默认）
+ *
+ * slash command 入口 `/harness-feat` 由宿主展开成含 marker 的 prompt，
+ * 由本函数统一识别；无需在本层区分 slash 与 marker 触发路径。
+ */
+function detectPresetMarker(prompt: string): { preset: WorkflowPreset; presetSource: PresetSource } {
+  if (/\[harness:feat\]/i.test(prompt)) {
+    return { preset: 'full', presetSource: 'prompt_marker' };
+  }
+  return { preset: 'lite', presetSource: 'slash_command' };
+}
+
+/**
+ * 从 prompt 中剥除 `[harness:feat]` marker，得到干净的任务 goal。
+ *
+ * marker 是 preset 声明的控制信号（已被 detectPresetMarker 消费），
+ * 不应作为 goal 文本的一部分污染 contract.goal / requirement.md 等下游工件。
+ */
+function stripPresetMarker(prompt: string): string {
+  return prompt.replace(/\[harness:feat\]/gi, '').trim();
+}
+
+/**
+ * classifyPrompt — 入口意图分类（v2.1 精简版）。
+ *
+ * 决策规则：
+ * - 空 prompt → chat
+ * - 宿主内部 prompt（如 Codex 生成 title 用）→ chat
+ * - 有 active task：
+ *   - 显式新任务 → create_task / delegate_to_planner
+ *   - 问答 → chat
+ *   - 其他 → resume_task（默认续接）
+ * - 无 active task：
+ *   - 问答 → chat
+ *   - 其他 → create_task / delegate_to_planner（按 fallback 配置）
  */
 function classifyPrompt(
   prompt: string,
@@ -138,9 +130,8 @@ function classifyPrompt(
     return {
       action: 'chat',
       reason: 'empty_prompt',
-      taskKind: 'empty',
-      risk: 'low',
-      confidence: 1,
+      preset: 'lite',
+      presetSource: null,
     };
   }
 
@@ -148,109 +139,68 @@ function classifyPrompt(
     return {
       action: 'chat',
       reason: 'host_internal_prompt',
-      taskKind: 'host_internal',
-      risk: 'low',
-      confidence: 1,
+      preset: 'lite',
+      presetSource: null,
     };
   }
 
-  // 有 active task 时，优先续接。只有显式"新建任务"才脱离。
+  const { preset, presetSource } = detectPresetMarker(prompt);
+  const hasMarker = presetSource === 'prompt_marker';
+
   if (hasActiveTask) {
-    if (isExplicitNewTask(prompt)) {
-      const taskKind = detectChangeKind(prompt);
+    // v2.1 fix: [harness:feat] marker 是用户的显式声明（SPEC §6.4.3），
+    // 优先级高于 active task 续接 —— marker 命中 = 明确要新建 full task。
+    if (isExplicitNewTask(prompt) || hasMarker) {
       return {
         action: allowFallbackCreate ? 'create_task' : 'delegate_to_planner',
         reason: 'explicit_new_task',
-        taskKind: taskKind ?? 'code_change',
-        risk: taskKind ? detectRisk(prompt, taskKind) : 'medium',
-        confidence: 0.85,
+        preset,
+        presetSource,
       };
     }
 
     if (isQuestionOnly(prompt)) {
-      return {
-        action: 'chat',
-        reason: 'matched_question_intent',
-        taskKind: 'question',
-        risk: 'low',
-        confidence: 0.95,
-      };
+      return { action: 'chat', reason: 'question_intent', preset: 'lite', presetSource: null };
     }
 
-    // 有 active task 的其他所有情况（含变更类意图）→ 续接当前任务
     return {
       action: 'resume_task',
       reason: 'resume_active_task',
-      taskKind: 'resume',
-      risk: 'low',
-      confidence: 0.85,
+      preset: 'lite', // resume 不应用 marker；preset 跟随 active task
+      presetSource: null,
     };
   }
 
-  // 无 active task：按原有逻辑分流
   if (isQuestionOnly(prompt)) {
-    return {
-      action: 'chat',
-      reason: 'matched_question_intent',
-      taskKind: 'question',
-      risk: 'low',
-      confidence: 0.95,
-    };
-  }
-
-  const taskKind = detectChangeKind(prompt);
-  if (taskKind) {
-    return {
-      action: allowFallbackCreate ? 'create_task' : 'delegate_to_planner',
-      reason: 'matched_change_intent',
-      taskKind,
-      risk: detectRisk(prompt, taskKind),
-      confidence: 0.9,
-    };
+    return { action: 'chat', reason: 'question_intent', preset: 'lite', presetSource: null };
   }
 
   return {
-    action: 'chat',
-    reason: 'ambiguous_intent',
-    taskKind: 'question',
-    risk: 'low',
-    confidence: 0.4,
-  };
-}
-
-function applyLearnedDecision(
-  base: IntakeDecision,
-  prompt: string,
-  feedbackEntries: Awaited<ReturnType<typeof loadIntakeFeedback>>,
-): IntakeDecision {
-  if (base.reason === 'empty_prompt' || base.reason === 'host_internal_prompt' || base.reason === 'resume_active_task') {
-    return base;
-  }
-
-  const learned = classifyByIntakeFeedback(prompt, feedbackEntries);
-  if (!learned) {
-    return base;
-  }
-
-  return {
-    action: learned.action,
-    reason: learned.reason,
-    taskKind: learned.action === 'chat' ? 'question' : base.taskKind,
-    risk: base.risk,
-    confidence: learned.confidence,
-    learnedFrom: learned.matchedEntryIds,
+    action: allowFallbackCreate ? 'create_task' : 'delegate_to_planner',
+    reason: 'change_intent',
+    preset,
+    presetSource,
   };
 }
 
 /**
- * 根据 action + 当前 task stage + enabled 角色，输出 stage-aware 的推荐 sub-agent。
- * 没有合适角色时返回 null（hook 文案会回退到老的 harness-planner / harness-evaluator）。
+ * 推荐 sub-agent（v2.1 调整）。
+ *
+ * 关键改动（SPEC §6.4.4 / §8）：lite preset 不需要 sub-agent
+ * （三阶段由主 agent 直接承担），一律返回 null。
+ *
+ * full preset 沿用原 role 路由逻辑：delegate_to_planner → 新任务起 spec，
+ * resume_task → 当前 stage 对应角色。
  */
 async function resolveRecommendedAgent(
   workDir: string,
   action: PromptAction,
   activeStage: StageMarker | null,
+  preset: WorkflowPreset,
 ): Promise<string | null> {
+  if (preset === 'lite') {
+    return null;
+  }
   if (action !== 'delegate_to_planner' && action !== 'resume_task') {
     return null;
   }
@@ -261,8 +211,6 @@ async function resolveRecommendedAgent(
   if (action === 'delegate_to_planner') {
     return pickRecommendedAgent('new_task', null, enabledRoles);
   }
-
-  // action === 'resume_task'
   return pickRecommendedAgent('resume_task', activeStage, enabledRoles);
 }
 
@@ -277,56 +225,69 @@ export async function runHostUserPromptSubmit(
   const config = await loadHarnessConfig(workDir);
   const activeTaskId = await readActiveTaskId(workDir);
 
-  // 加载 active task 的 currentStage（如有），用于 resume_task 的角色路由
+  // 加载 active task 的 stage + preset（如有），用于续接路由与 preset 判定
   let activeStage: StageMarker | null = null;
+  let activePreset: WorkflowPreset | null = null;
   if (activeTaskId) {
     try {
       const ctx = await manager.load(activeTaskId, workDir);
       activeStage = ctx.state.currentStage;
+      activePreset = ctx.state.preset;
     } catch {
-      // active task 文件存在但 task 工件丢失：忽略，按无 stage 处理
+      // active task 文件存在但工件缺失：忽略，按无 stage 处理
     }
   }
 
-  // 自动降级：上次 Planner 委派未产生 task，本次直接 create_task
   const pending = await readPendingDelegation(workDir);
-  const feedbackEntries = await loadIntakeFeedback(workDir);
-  const builtinDecision = classifyPrompt(
+  const decision = classifyPrompt(
     prompt,
     Boolean(activeTaskId),
-    config.fallbackCreateTaskWithoutPlanner || (pending !== null),
+    config.fallbackCreateTaskWithoutPlanner || pending !== null,
   );
-  const decision = applyLearnedDecision(builtinDecision, prompt, feedbackEntries);
   const { action } = decision;
 
-  // v3-core 5 角色路由：根据 action + stage 选推荐 sub-agent
-  const recommendedAgent = await resolveRecommendedAgent(workDir, action, activeStage);
+  // 实际生效 preset：resume_task / chat 时跟随 active task；create_task / delegate 时用 detect 出的
+  const effectivePreset: WorkflowPreset =
+    (action === 'resume_task' || action === 'chat') && activePreset !== null
+      ? activePreset
+      : decision.preset;
+
+  const recommendedAgent = await resolveRecommendedAgent(
+    workDir,
+    action,
+    activeStage,
+    effectivePreset,
+  );
 
   await appendHarnessEvent(workDir, {
     type: 'host.intake_decision',
     host: config.defaultHost,
     action,
     reason: decision.reason,
-    taskKind: decision.taskKind,
-    risk: decision.risk,
-    confidence: decision.confidence,
-    learnedFrom: decision.learnedFrom,
+    preset: effectivePreset,
+    presetSource: decision.presetSource,
     activeTaskId,
     activeStage,
     recommendedAgent,
     taskCreated: false,
   });
-  await writeLastIntakeDecision(workDir, {
-    prompt,
-    action,
-    reason: decision.reason,
-    taskKind: decision.taskKind,
-    risk: decision.risk,
-  });
 
   if (action === 'create_task') {
     await clearPendingDelegation(workDir);
-    const ctx = await manager.create(prompt, workDir);
+    // bug A fix: 剥除 marker，避免 [harness:feat] 污染 contract.goal
+    const ctx = await manager.create(stripPresetMarker(prompt), workDir, {
+      preset: decision.preset,
+      presetSource: decision.presetSource ?? 'slash_command',
+    });
+
+    // v2.1: 触发 task.preset_set 事件 (SPEC §6.4.7)
+    await appendHarnessEvent(workDir, {
+      type: 'task.preset_set',
+      task_id: ctx.taskId,
+      preset: decision.preset,
+      source: decision.presetSource ?? 'slash_command',
+    });
+
     const engine = new WorkflowEngine(manager);
     await engine.run(ctx, {
       adapterKind: ctx.config.adapterKind,
@@ -340,6 +301,7 @@ export async function runHostUserPromptSubmit(
       action,
       activeTaskId: ctx.taskId,
       taskCreated: true,
+      preset: decision.preset,
       contractPath: `${ctx.taskDir}/contract.yaml`,
       planPath: `${ctx.taskDir}/plan.md`,
     });
@@ -350,10 +312,8 @@ export async function runHostUserPromptSubmit(
       activeStage: ctx.state.currentStage,
       action,
       reason: decision.reason,
-      taskKind: decision.taskKind,
-      risk: decision.risk,
-      confidence: decision.confidence,
-      learnedFrom: decision.learnedFrom,
+      preset: decision.preset,
+      presetSource: decision.presetSource,
       taskCreated: true,
       taskId: ctx.taskId,
       contractPath: `${ctx.taskDir}/contract.yaml`,
@@ -375,10 +335,8 @@ export async function runHostUserPromptSubmit(
     activeStage,
     action,
     reason: decision.reason,
-    taskKind: decision.taskKind,
-    risk: decision.risk,
-    confidence: decision.confidence,
-    learnedFrom: decision.learnedFrom,
+    preset: effectivePreset,
+    presetSource: decision.presetSource,
     taskCreated: false,
     recommendedAgent,
     fallbackCreateTaskWithoutPlanner: config.fallbackCreateTaskWithoutPlanner,

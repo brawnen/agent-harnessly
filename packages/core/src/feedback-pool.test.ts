@@ -161,6 +161,9 @@ describe('buildFeedbackEntry', () => {
         updatedAt: '2026-04-20T00:00:00.000Z',
         completedStages: ['spec', 'design', 'execute', 'review', 'test', 'commit_gate'],
         retryCount: 0,
+        preset: 'lite',
+        presetSource: 'slash_command',
+        presetSetAt: '2026-04-20T00:00:00.000Z',
       },
       contract,
       ...overrides,
@@ -245,6 +248,9 @@ describe('buildFeedbackEntry', () => {
         retryCount: 2,
         lastFailureReason: 'lint failed',
         lastFailureStage: 'test',
+        preset: 'lite',
+        presetSource: 'slash_command',
+        presetSetAt: '2026-04-20T00:00:00.000Z',
       },
     });
     const report = makeReport({
@@ -278,6 +284,9 @@ describe('buildFeedbackEntry', () => {
         retryCount: 1,
         lastFailureReason: 'old failure',
         lastFailureStage: 'test',
+        preset: 'lite',
+        presetSource: 'slash_command',
+        presetSetAt: '2026-04-20T00:00:00.000Z',
       },
     });
 

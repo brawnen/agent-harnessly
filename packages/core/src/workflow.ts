@@ -8,7 +8,11 @@ import type {
   TaskContext,
   TaskReport,
 } from '@brawnen/harnessly-shared';
-import { validateDesignMarkdown, validateRequirementMarkdown } from '@brawnen/harnessly-shared';
+import {
+  PRESET_STAGE_MAP,
+  validateDesignMarkdown,
+  validateRequirementMarkdown,
+} from '@brawnen/harnessly-shared';
 
 import { checkContract, generateContract } from './contract';
 import { runArtifactGuard } from './artifact-guard';
@@ -244,13 +248,28 @@ export class WorkflowEngine {
   ): Promise<{ report?: TaskReport; dryRun: boolean }> {
     const startFrom = options.resumeFrom ?? 'spec';
 
+    // v2.1: 按 ctx.state.preset 决定本任务实际跑哪些阶段
+    const enabledStages = new Set(PRESET_STAGE_MAP[ctx.state.preset]);
+    const hasDesign = enabledStages.has('design');
+    const hasReview = enabledStages.has('review');
+    const hasCommitGate = enabledStages.has('commit_gate');
+
+    // lite preset 不允许 resumeFrom='design'（无 design 阶段）
+    if (startFrom === 'design' && !hasDesign) {
+      throw new Error(
+        `lite preset 任务不存在 design 阶段，无法从 'design' 恢复。可改用 'spec' 重出或 '/harness-upgrade' 升档为 full。`,
+      );
+    }
+
     // ===== Stage 1: spec =====
     if (startFrom === 'spec') {
       await this.executeSpecStage(ctx);
-      // ===== Stage 2: design =====
-      await this.executeDesignStage(ctx);
+      // ===== Stage 2: design (full only) =====
+      if (hasDesign) {
+        await this.executeDesignStage(ctx);
+      }
     } else if (startFrom === 'design') {
-      // 从 design 阶段恢复：spec 工件已存在，直接重出 design
+      // 从 design 阶段恢复：spec 工件已存在，直接重出 design（仅 full 可达）
       await this.executeDesignStage(ctx);
     } else if (startFrom === 'execute') {
       await this.manager.markRetrying(ctx);
@@ -260,22 +279,46 @@ export class WorkflowEngine {
       return { dryRun: true };
     }
 
-    // ===== Stage 3: execute =====
+    // ===== Stage 3: execute (always) =====
     const adapterResult = await this.executeExecuteStage(ctx, options);
 
-    // ===== Stage 4: review =====
-    const reviewFindings = await this.executeReviewStage(ctx);
+    // ===== Stage 4: review (full only) =====
+    // lite preset 跳过任务级 reviewer，reviewFindings 视为空集；
+    // 横切的常驻 review agents 与本阶段独立，不受 preset 影响。
+    const reviewFindings = hasReview ? await this.executeReviewStage(ctx) : [];
 
-    // ===== Stage 5: test =====
+    // ===== Stage 5: test (always) =====
     const evidence = await this.executeTestStage(ctx, reviewFindings);
 
-    // ===== Stage 6: commit_gate =====
-    const report = await this.executeCommitGateStage(ctx, adapterResult, evidence);
+    // ===== Stage 6: commit_gate (full only) =====
+    if (hasCommitGate) {
+      const report = await this.executeCommitGateStage(ctx, adapterResult, evidence);
+      return { report, dryRun: false };
+    }
 
-    return {
-      report,
-      dryRun: false,
-    };
+    // lite preset 终止：test PASS 后直接 completed，不产出 report.json
+    // (asset promotion 在 lite 下的触发点改造见阶段 2)
+    await this.finalizeLitePreset(ctx);
+    return { dryRun: false };
+  }
+
+  /**
+   * lite preset 在 test 阶段 PASS 后的终止处理。
+   *
+   * 与 full preset 的差异：
+   * - 不调 evaluateCommitGate（无 commit_gate 阶段）
+   * - 不产出 report.json / commit-summary.md
+   * - 直接把 state.status 标 completed、state.currentStage 标 test
+   *
+   * lite 模式下 asset promotion 的触发点改为本函数（SPEC §22.2.1 修订），
+   * 但具体调用 promoteTaskArtifacts 推迟到阶段 2 实施。
+   */
+  private async finalizeLitePreset(ctx: TaskContext): Promise<void> {
+    ctx.state.status = 'completed';
+    ctx.state.currentStage = 'test';
+    ctx.state.currentOwner = 'tester';
+    markCompleted(ctx, 'test');
+    await this.manager.saveState(ctx);
   }
 
   /**
@@ -452,7 +495,7 @@ export class WorkflowEngine {
     if (ctx.contract) {
       await this.manager.saveTestReport(ctx, renderTestReport(ctx.contract, evidence));
     }
-    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir)];
+    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir, ctx.state.preset)];
 
     markCompleted(ctx, 'test');
     await this.manager.saveState(ctx);

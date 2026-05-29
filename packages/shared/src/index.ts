@@ -22,6 +22,41 @@ export type FlatYamlValue = string | number | boolean | string[];
 export type TaskStatus = 'active' | 'blocked' | 'completed' | 'aborted';
 
 /**
+ * Workflow Preset (v3-core SPEC §6.4)
+ * - `lite` (默认): spec → execute → test 三阶段，由主 agent 直接承担逻辑角色
+ * - `full`: 完整六阶段，要求实例化 5 个 sub-agent
+ *
+ * 用户通过 `/harness-feat` slash command 或 `[harness:feat]` marker 显式触发 full；
+ * 否则默认 lite。
+ */
+export type WorkflowPreset = 'lite' | 'full';
+
+/**
+ * Preset 设置来源 (v3-core SPEC §6.4.7)
+ * - `slash_command`: 通过 `/harness-feat` slash command 触发
+ * - `prompt_marker`: 宿主不支持 slash 时通过 `[harness:feat]` marker 触发
+ * - `upgrade`: 由 `harness upgrade` / `/harness-upgrade` 命令从 lite 升档而来
+ */
+export type PresetSource = 'slash_command' | 'prompt_marker' | 'upgrade';
+
+/**
+ * Preset → 阶段子集映射 (v3-core SPEC §6.4.2)
+ *
+ * 阶段子集必须是 WorkflowStage 的**保序子集**：lite 跳过 design/review/commit_gate；
+ * full 跑全部六阶段。
+ *
+ * 当前为硬编码常量；后续阶段（P1.x）可扩展为从 `.harness/workflow.yaml` 读取，
+ * 实现 SPEC §6.4 中"实现可定义额外 preset"的扩展点。
+ */
+export const PRESET_STAGE_MAP: Record<WorkflowPreset, readonly WorkflowStage[]> = {
+  lite: ['spec', 'execute', 'test'],
+  full: ['spec', 'design', 'execute', 'review', 'test', 'commit_gate'],
+} as const;
+
+/** 默认 preset，必须是 lite (SPEC §6.4.1) */
+export const DEFAULT_PRESET: WorkflowPreset = 'lite';
+
+/**
  * v3-core 主干工作流的 6 个固定阶段。
  * 与 SPEC §6.1 保持一致，禁止扩展为可编排 DAG。
  */
@@ -231,6 +266,21 @@ export interface TaskState {
   retryCount: number;
   lastFailureReason?: string;
   lastFailureStage?: StageMarker;
+  /**
+   * v2.1 新增：任务绑定的 Workflow Preset (SPEC §6.4.7)。
+   * 加载 v2.0 state.json（缺该字段）时由 TaskManager.load 自动迁移为 'lite'。
+   */
+  preset: WorkflowPreset;
+  /**
+   * v2.1 新增：preset 设置来源 (SPEC §6.4.7)。
+   * v2.0 迁移时默认填 'slash_command'。
+   */
+  presetSource: PresetSource;
+  /**
+   * v2.1 新增：preset 设置时间 ISO timestamp (SPEC §6.4.7)。
+   * v2.0 迁移时取 createdAt。
+   */
+  presetSetAt: string;
 }
 
 export interface TaskContext {
@@ -517,6 +567,8 @@ export const riskLevelSchema = z.enum(['low', 'medium', 'high']);
 export const estimatedComplexitySchema = z.enum(['simple', 'medium', 'complex']);
 export const adapterKindSchema = z.enum(['claude-code', 'codex', 'custom']);
 export const taskStatusSchema = z.enum(['active', 'blocked', 'completed', 'aborted']);
+export const workflowPresetSchema = z.enum(['lite', 'full']);
+export const presetSourceSchema = z.enum(['slash_command', 'prompt_marker', 'upgrade']);
 export const workflowStageSchema = z.enum([
   'spec',
   'design',

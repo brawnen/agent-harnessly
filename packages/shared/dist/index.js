@@ -2,6 +2,11 @@
 import { ZodError, z } from "zod";
 var SHARED_PACKAGE_NAME = "@brawnen/harnessly-shared";
 var HARNESSLY_VERSION = "0.1.0-alpha.0";
+var PRESET_STAGE_MAP = {
+  lite: ["spec", "execute", "test"],
+  full: ["spec", "design", "execute", "review", "test", "commit_gate"]
+};
+var DEFAULT_PRESET = "lite";
 var packageInfo = {
   name: SHARED_PACKAGE_NAME,
   version: HARNESSLY_VERSION
@@ -23,6 +28,8 @@ var riskLevelSchema = z.enum(["low", "medium", "high"]);
 var estimatedComplexitySchema = z.enum(["simple", "medium", "complex"]);
 var adapterKindSchema = z.enum(["claude-code", "codex", "custom"]);
 var taskStatusSchema = z.enum(["active", "blocked", "completed", "aborted"]);
+var workflowPresetSchema = z.enum(["lite", "full"]);
+var presetSourceSchema = z.enum(["slash_command", "prompt_marker", "upgrade"]);
 var workflowStageSchema = z.enum([
   "spec",
   "design",
@@ -663,7 +670,9 @@ function parseTemplateDraft(text) {
   );
 }
 export {
+  DEFAULT_PRESET,
   HARNESSLY_VERSION,
+  PRESET_STAGE_MAP,
   SHARED_PACKAGE_NAME,
   acceptanceCriterionSchema,
   acceptanceVerifierSchema,
@@ -695,6 +704,7 @@ export {
   parseStringList,
   parseTaskReport,
   parseTemplateDraft,
+  presetSourceSchema,
   projectTypeSchema,
   requiredCheckSchema,
   riskLevelSchema,
@@ -720,5 +730,6 @@ export {
   validateRequirementMarkdown,
   validateTaskReport,
   validateTemplateDraft,
+  workflowPresetSchema,
   workflowStageSchema
 };

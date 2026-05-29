@@ -36,6 +36,7 @@ __export(index_exports, {
   ClaudeCodeAdapter: () => ClaudeCodeAdapter,
   CodexAdapter: () => CodexAdapter,
   CustomAdapter: () => CustomAdapter,
+  DEFAULT_CODEX_COMMAND: () => DEFAULT_CODEX_COMMAND,
   EVIDENCE_BASELINE_FILENAME: () => EVIDENCE_BASELINE_FILENAME,
   FEEDBACK_POOL_FILENAME: () => FEEDBACK_POOL_FILENAME,
   HARNESS_DIRNAME: () => HARNESS_DIRNAME,
@@ -914,7 +915,7 @@ async function moveFindingsToHistory(workDir, action) {
 }
 
 // src/task.ts
-function createInitialTaskState(taskId) {
+function createInitialTaskState(taskId, preset = import_harnessly_shared4.DEFAULT_PRESET, presetSource = "slash_command") {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     taskId,
@@ -924,7 +925,21 @@ function createInitialTaskState(taskId) {
     createdAt: now,
     updatedAt: now,
     completedStages: [],
-    retryCount: 0
+    retryCount: 0,
+    preset,
+    presetSource,
+    presetSetAt: now
+  };
+}
+function migrateTaskStateV2_1(raw) {
+  if (typeof raw.preset === "string" && typeof raw.presetSource === "string" && typeof raw.presetSetAt === "string") {
+    return raw;
+  }
+  return {
+    ...raw,
+    preset: import_harnessly_shared4.DEFAULT_PRESET,
+    presetSource: "slash_command",
+    presetSetAt: typeof raw.createdAt === "string" ? raw.createdAt : (/* @__PURE__ */ new Date()).toISOString()
   };
 }
 async function writeJson(filePath, payload) {
@@ -1032,11 +1047,15 @@ var TaskManager = class {
     await (0, import_promises5.writeFile)(this.getActiveTaskFile(workDir), `${taskId}
 `, "utf8");
   }
-  async create(goal, workDir) {
+  async create(goal, workDir, options = {}) {
     const taskId = this.generateTaskId();
     const taskDir = this.getTaskDir(workDir, taskId);
     const config = await this.loadConfig(workDir);
-    const state = createInitialTaskState(taskId);
+    const state = createInitialTaskState(
+      taskId,
+      options.preset ?? import_harnessly_shared4.DEFAULT_PRESET,
+      options.presetSource ?? "slash_command"
+    );
     await (0, import_promises5.mkdir)(taskDir, { recursive: true });
     await writeJson(this.getMetaFile(taskDir), { taskId, goal });
     await writeJson(this.getStateFile(taskDir), state);
@@ -1168,7 +1187,8 @@ ${content}
     let state;
     try {
       meta = await readJson(this.getMetaFile(taskDir));
-      state = await readJson(this.getStateFile(taskDir));
+      const rawState = await readJson(this.getStateFile(taskDir));
+      state = migrateTaskStateV2_1(rawState);
     } catch (error) {
       if (isMissingFileError4(error)) {
         throw new Error(`task ${taskId} \u4E0D\u5B58\u5728\u3002\u53EF\u5148\u6267\u884C harnessly list \u67E5\u770B\u5DF2\u6709\u4EFB\u52A1\u3002`);
@@ -1222,7 +1242,8 @@ ${content}
       entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
         const taskDir = import_node_path5.default.join(tasksDir, entry.name);
         const meta = await readJson(this.getMetaFile(taskDir));
-        const state = await readJson(this.getStateFile(taskDir));
+        const rawState = await readJson(this.getStateFile(taskDir));
+        const state = migrateTaskStateV2_1(rawState);
         return {
           taskId: meta.taskId,
           goal: meta.goal,
@@ -1645,20 +1666,30 @@ async function exists(filePath) {
 function isMissingFileError6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
-var REQUIRED_TASK_ARTIFACTS = [
-  "requirement.md",
-  "contract.yaml",
-  "design.md",
-  "task-breakdown.md",
-  "implementation-notes.md",
-  "review.md",
-  "resident-review.md",
-  "test-report.md",
-  "evidence/current.json"
-];
-async function runArtifactGuard(taskDir) {
+var REQUIRED_ARTIFACTS_BY_PRESET = {
+  lite: [
+    "requirement.md",
+    "contract.yaml",
+    "implementation-notes.md",
+    "test-report.md",
+    "evidence/current.json"
+  ],
+  full: [
+    "requirement.md",
+    "contract.yaml",
+    "design.md",
+    "task-breakdown.md",
+    "implementation-notes.md",
+    "review.md",
+    "resident-review.md",
+    "test-report.md",
+    "evidence/current.json"
+  ]
+};
+async function runArtifactGuard(taskDir, preset = "full") {
+  const required = REQUIRED_ARTIFACTS_BY_PRESET[preset];
   const missing = [];
-  for (const relative of REQUIRED_TASK_ARTIFACTS) {
+  for (const relative of required) {
     if (!await exists(import_node_path7.default.join(taskDir, relative))) {
       missing.push(relative);
     }
@@ -1666,8 +1697,8 @@ async function runArtifactGuard(taskDir) {
   return {
     name: "artifact.guard",
     status: missing.length === 0 ? "passed" : "failed",
-    command: "check .harness task artifacts",
-    detail: missing.length === 0 ? "\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\u5B8C\u6574" : `\u7F3A\u5C11\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\uFF1A${missing.join(", ")}`,
+    command: `check .harness task artifacts (preset=${preset})`,
+    detail: missing.length === 0 ? `\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6\u5B8C\u6574 (preset=${preset})` : `\u7F3A\u5C11\u4EFB\u52A1\u7269\u7406\u5DE5\u4EF6 (preset=${preset})\uFF1A${missing.join(", ")}`,
     fixHint: missing.length === 0 ? void 0 : "\u56DE\u5230\u5BF9\u5E94\u9636\u6BB5\u751F\u6210\u7F3A\u5931\u5DE5\u4EF6\uFF0C\u4E0D\u8981\u53EA\u4F9D\u8D56\u5BF9\u8BDD\u6587\u672C"
   };
 }
@@ -1869,6 +1900,11 @@ function createContractPrompt(goal, templateName, fallback) {
     "- riskLevel \u57FA\u4E8E\u6539\u52A8\u98CE\u9669\u5224\u65AD",
     "- scopeInclude \u4F7F\u7528\u5177\u4F53\u4FEE\u6539\u8303\u56F4\uFF0C\u4E0D\u8981\u5199\u7A7A\u8BDD",
     "- acceptanceCriteria \u81F3\u5C11 3 \u6761\uFF0C\u4E14\u8981\u53EF\u9A8C\u8BC1",
+    "- \u5C3D\u91CF\u8BA9 criterion \u7528\u4EE5\u4E0B\u7ED3\u6784\u5316\u524D\u7F00\uFF0C\u4F7F\u5176\u53EF\u88AB\u81EA\u52A8\u6821\u9A8C\uFF08\u65E0\u6CD5\u7ED3\u6784\u5316\u65F6\u624D\u9000\u56DE\u81EA\u7136\u8BED\u8A00\uFF09\uFF1A",
+    "  - `file:<\u76F8\u5BF9\u8DEF\u5F84>`\uFF1A\u65AD\u8A00\u6587\u4EF6\u5B58\u5728",
+    "  - `contains:<\u76F8\u5BF9\u8DEF\u5F84>::<\u6587\u672C>`\uFF1A\u65AD\u8A00\u6587\u4EF6\u5305\u542B\u6307\u5B9A\u6587\u672C",
+    "  - `command:<\u547D\u4EE4>`\uFF1A\u65AD\u8A00\u8BE5\u547D\u4EE4\u4EE5\u9000\u51FA\u7801 0 \u901A\u8FC7\uFF08\u5982 `command:pnpm test`\uFF09",
+    "  - \u7ED3\u6784\u5316\u6761\u76EE\u7684 verifiableBy \u5E94\u4E0E\u624B\u6BB5\u4E00\u81F4\uFF08file/contains/command \u7C7B\u7528 test \u6216 build\uFF0C\u7EAF\u4EBA\u5DE5\u5224\u65AD\u624D\u7528 manual\uFF09",
     "- outOfScope \u660E\u786E\u5217\u51FA\u4E0D\u505A\u7684\u4E8B\u60C5",
     "",
     `\u53EF\u53C2\u8003\u7684\u4FDD\u5E95 contract\uFF1A${JSON.stringify(fallback, null, 2)}`
@@ -2437,10 +2473,11 @@ var ClaudeCodeAdapter = class {
     };
   }
 };
+var DEFAULT_CODEX_COMMAND = 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"';
 var CodexAdapter = class {
   kind = "codex";
   async execute(input) {
-    const command = input.command?.trim() || 'codex exec --full-auto - < "$HARNESSLY_PROMPT_FILE"';
+    const command = input.command?.trim() || DEFAULT_CODEX_COMMAND;
     const result = await runShellCommand(command, input);
     return {
       ...result,
@@ -3291,9 +3328,20 @@ var WorkflowEngine = class {
   baselineSnapshot = null;
   async run(ctx, options) {
     const startFrom = options.resumeFrom ?? "spec";
+    const enabledStages = new Set(import_harnessly_shared11.PRESET_STAGE_MAP[ctx.state.preset]);
+    const hasDesign = enabledStages.has("design");
+    const hasReview = enabledStages.has("review");
+    const hasCommitGate = enabledStages.has("commit_gate");
+    if (startFrom === "design" && !hasDesign) {
+      throw new Error(
+        `lite preset \u4EFB\u52A1\u4E0D\u5B58\u5728 design \u9636\u6BB5\uFF0C\u65E0\u6CD5\u4ECE 'design' \u6062\u590D\u3002\u53EF\u6539\u7528 'spec' \u91CD\u51FA\u6216 '/harness-upgrade' \u5347\u6863\u4E3A full\u3002`
+      );
+    }
     if (startFrom === "spec") {
       await this.executeSpecStage(ctx);
-      await this.executeDesignStage(ctx);
+      if (hasDesign) {
+        await this.executeDesignStage(ctx);
+      }
     } else if (startFrom === "design") {
       await this.executeDesignStage(ctx);
     } else if (startFrom === "execute") {
@@ -3303,13 +3351,32 @@ var WorkflowEngine = class {
       return { dryRun: true };
     }
     const adapterResult = await this.executeExecuteStage(ctx, options);
-    const reviewFindings = await this.executeReviewStage(ctx);
+    const reviewFindings = hasReview ? await this.executeReviewStage(ctx) : [];
     const evidence = await this.executeTestStage(ctx, reviewFindings);
-    const report = await this.executeCommitGateStage(ctx, adapterResult, evidence);
-    return {
-      report,
-      dryRun: false
-    };
+    if (hasCommitGate) {
+      const report = await this.executeCommitGateStage(ctx, adapterResult, evidence);
+      return { report, dryRun: false };
+    }
+    await this.finalizeLitePreset(ctx);
+    return { dryRun: false };
+  }
+  /**
+   * lite preset 在 test 阶段 PASS 后的终止处理。
+   *
+   * 与 full preset 的差异：
+   * - 不调 evaluateCommitGate（无 commit_gate 阶段）
+   * - 不产出 report.json / commit-summary.md
+   * - 直接把 state.status 标 completed、state.currentStage 标 test
+   *
+   * lite 模式下 asset promotion 的触发点改为本函数（SPEC §22.2.1 修订），
+   * 但具体调用 promoteTaskArtifacts 推迟到阶段 2 实施。
+   */
+  async finalizeLitePreset(ctx) {
+    ctx.state.status = "completed";
+    ctx.state.currentStage = "test";
+    ctx.state.currentOwner = "tester";
+    markCompleted(ctx, "test");
+    await this.manager.saveState(ctx);
   }
   /**
    * Stage 1: spec
@@ -3459,7 +3526,7 @@ var WorkflowEngine = class {
     if (ctx.contract) {
       await this.manager.saveTestReport(ctx, renderTestReport(ctx.contract, evidence));
     }
-    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir)];
+    evidence.checks = [...evidence.checks, await runArtifactGuard(ctx.taskDir, ctx.state.preset)];
     markCompleted(ctx, "test");
     await this.manager.saveState(ctx);
     return evidence;
@@ -3545,6 +3612,7 @@ function getCorePackageInfo() {
   ClaudeCodeAdapter,
   CodexAdapter,
   CustomAdapter,
+  DEFAULT_CODEX_COMMAND,
   EVIDENCE_BASELINE_FILENAME,
   FEEDBACK_POOL_FILENAME,
   HARNESS_DIRNAME,

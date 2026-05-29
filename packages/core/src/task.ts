@@ -8,13 +8,16 @@ import {
   parseTaskReport,
   parseContract,
   type Contract,
+  DEFAULT_PRESET,
   type HarnessConfig,
+  type PresetSource,
   type StageMarker,
   type TaskContext,
   type TaskState,
   type TaskStatus,
   type TaskOwnerRole,
   type TaskSummary,
+  type WorkflowPreset,
   serializeContract,
   serializeTaskReport,
 } from '@brawnen/harnessly-shared';
@@ -22,7 +25,21 @@ import {
 import { appendFeedbackEntry, buildFeedbackEntry } from './feedback-pool';
 import { loadHarnessConfig } from './scaffold';
 
-function createInitialTaskState(taskId: string): TaskState {
+/**
+ * 创建任务时可传入的可选参数 (v2.1 新增)。
+ * - preset: 任务级 Workflow Preset；缺省 lite (SPEC §6.4.1)
+ * - presetSource: preset 设置来源；缺省 slash_command
+ */
+export interface CreateTaskOptions {
+  preset?: WorkflowPreset;
+  presetSource?: PresetSource;
+}
+
+function createInitialTaskState(
+  taskId: string,
+  preset: WorkflowPreset = DEFAULT_PRESET,
+  presetSource: PresetSource = 'slash_command',
+): TaskState {
   const now = new Date().toISOString();
 
   return {
@@ -34,7 +51,38 @@ function createInitialTaskState(taskId: string): TaskState {
     updatedAt: now,
     completedStages: [],
     retryCount: 0,
+    preset,
+    presetSource,
+    presetSetAt: now,
   };
+}
+
+/**
+ * v2.0 → v2.1 state.json 自动迁移 (SPEC §6.4.7 / 附录 B v2.1)。
+ *
+ * 旧 state.json 缺 preset / presetSource / presetSetAt 三字段时，默认填：
+ * - preset: 'lite' (DEFAULT_PRESET)
+ * - presetSource: 'slash_command'
+ * - presetSetAt: state.createdAt
+ *
+ * 迁移只在 load 时进行；不主动写回磁盘——下次 save 时随其它字段一起被写入。
+ * 这样避免 read-only 场景（如 list / show）触发写副作用。
+ */
+function migrateTaskStateV2_1(raw: Record<string, unknown> & Partial<TaskState>): TaskState {
+  if (
+    typeof raw.preset === 'string' &&
+    typeof raw.presetSource === 'string' &&
+    typeof raw.presetSetAt === 'string'
+  ) {
+    return raw as TaskState;
+  }
+
+  return {
+    ...raw,
+    preset: DEFAULT_PRESET,
+    presetSource: 'slash_command',
+    presetSetAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
+  } as TaskState;
 }
 
 async function writeJson(filePath: string, payload: unknown): Promise<void> {
@@ -170,11 +218,15 @@ export class TaskManager {
     await writeFile(this.getActiveTaskFile(workDir), `${taskId}\n`, 'utf8');
   }
 
-  async create(goal: string, workDir: string): Promise<TaskContext> {
+  async create(goal: string, workDir: string, options: CreateTaskOptions = {}): Promise<TaskContext> {
     const taskId = this.generateTaskId();
     const taskDir = this.getTaskDir(workDir, taskId);
     const config = await this.loadConfig(workDir);
-    const state = createInitialTaskState(taskId);
+    const state = createInitialTaskState(
+      taskId,
+      options.preset ?? DEFAULT_PRESET,
+      options.presetSource ?? 'slash_command',
+    );
 
     await mkdir(taskDir, { recursive: true });
     await writeJson(this.getMetaFile(taskDir), { taskId, goal });
@@ -339,7 +391,9 @@ export class TaskManager {
 
     try {
       meta = await readJson<{ taskId: string; goal: string }>(this.getMetaFile(taskDir));
-      state = await readJson<TaskState>(this.getStateFile(taskDir));
+      // 读为宽松类型再走 v2.0→v2.1 迁移，避免旧文件因缺新字段直接报错
+      const rawState = await readJson<Record<string, unknown> & Partial<TaskState>>(this.getStateFile(taskDir));
+      state = migrateTaskStateV2_1(rawState);
     } catch (error) {
       if (isMissingFileError(error)) {
         throw new Error(`task ${taskId} 不存在。可先执行 harnessly list 查看已有任务。`);
@@ -409,7 +463,9 @@ export class TaskManager {
         .map(async (entry) => {
           const taskDir = path.join(tasksDir, entry.name);
           const meta = await readJson<{ taskId: string; goal: string }>(this.getMetaFile(taskDir));
-          const state = await readJson<TaskState>(this.getStateFile(taskDir));
+          // 同样走迁移，兼容 v2.0 state.json
+          const rawState = await readJson<Record<string, unknown> & Partial<TaskState>>(this.getStateFile(taskDir));
+          const state = migrateTaskStateV2_1(rawState);
 
           return {
             taskId: meta.taskId,

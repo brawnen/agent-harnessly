@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { EvidenceCheckResult } from '@brawnen/harnessly-shared';
+import type { EvidenceCheckResult, WorkflowPreset } from '@brawnen/harnessly-shared';
 
 async function exists(filePath: string): Promise<boolean> {
   try {
@@ -21,21 +21,42 @@ function isMissingFileError(error: unknown): boolean {
   );
 }
 
-const REQUIRED_TASK_ARTIFACTS = [
-  'requirement.md',
-  'contract.yaml',
-  'design.md',
-  'task-breakdown.md',
-  'implementation-notes.md',
-  'review.md',
-  'resident-review.md',
-  'test-report.md',
-  'evidence/current.json',
-] as const;
+/**
+ * Preset → 必需工件清单 (SPEC §6.4.9 修订)。
+ *
+ * - `lite`：只产 spec / execute / test 三阶段工件（无 design / review / commit_gate）
+ * - `full`：完整六阶段工件
+ *
+ * 未传 preset 时按 'full' 兼容（向后兼容旧调用方）。
+ */
+const REQUIRED_ARTIFACTS_BY_PRESET: Record<WorkflowPreset, readonly string[]> = {
+  lite: [
+    'requirement.md',
+    'contract.yaml',
+    'implementation-notes.md',
+    'test-report.md',
+    'evidence/current.json',
+  ],
+  full: [
+    'requirement.md',
+    'contract.yaml',
+    'design.md',
+    'task-breakdown.md',
+    'implementation-notes.md',
+    'review.md',
+    'resident-review.md',
+    'test-report.md',
+    'evidence/current.json',
+  ],
+} as const;
 
-export async function runArtifactGuard(taskDir: string): Promise<EvidenceCheckResult> {
+export async function runArtifactGuard(
+  taskDir: string,
+  preset: WorkflowPreset = 'full',
+): Promise<EvidenceCheckResult> {
+  const required = REQUIRED_ARTIFACTS_BY_PRESET[preset];
   const missing: string[] = [];
-  for (const relative of REQUIRED_TASK_ARTIFACTS) {
+  for (const relative of required) {
     if (!(await exists(path.join(taskDir, relative)))) {
       missing.push(relative);
     }
@@ -44,8 +65,11 @@ export async function runArtifactGuard(taskDir: string): Promise<EvidenceCheckRe
   return {
     name: 'artifact.guard',
     status: missing.length === 0 ? 'passed' : 'failed',
-    command: 'check .harness task artifacts',
-    detail: missing.length === 0 ? '任务物理工件完整' : `缺少任务物理工件：${missing.join(', ')}`,
+    command: `check .harness task artifacts (preset=${preset})`,
+    detail:
+      missing.length === 0
+        ? `任务物理工件完整 (preset=${preset})`
+        : `缺少任务物理工件 (preset=${preset})：${missing.join(', ')}`,
     fixHint: missing.length === 0 ? undefined : '回到对应阶段生成缺失工件，不要只依赖对话文本',
   };
 }

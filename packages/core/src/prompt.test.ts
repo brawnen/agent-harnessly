@@ -60,6 +60,9 @@ function makeCtx(stage: StageMarker, overrides: Partial<TaskContext> = {}): Task
     updatedAt: now,
     completedStages: ['spec', 'design'],
     retryCount: 0,
+    preset: 'lite',
+    presetSource: 'slash_command',
+    presetSetAt: now,
   };
 
   return {
@@ -139,6 +142,9 @@ describe('assemblePrompt', () => {
           retryCount: 2,
           lastFailureStage: 'test',
           lastFailureReason: 'lint failed',
+          preset: 'lite',
+          presetSource: 'slash_command',
+          presetSetAt: '2026-04-20T00:00:00.000Z',
         },
         feedback: 'lint failed: 3 errors in src/foo.ts',
       }),

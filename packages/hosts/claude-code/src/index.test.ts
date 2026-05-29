@@ -41,6 +41,25 @@ describe('renderClaudeCodeManagedFiles', () => {
     expect(settings).toContain('.harness/hosts/claude-code/hooks/stop.js');
   });
 
+  it('v2.1: should render trusted-workspace permissions (allow Bash, ask 删除/不可逆)', () => {
+    const settings = renderClaudeCodeSettings(createHostManifest('claude-code', 'harnessly-local'), TEST_WORK_DIR);
+    const parsed = JSON.parse(settings) as {
+      permissions?: { defaultMode?: string; allow?: string[]; ask?: string[] };
+    };
+
+    expect(parsed.permissions).toBeDefined();
+    // 默认放行：Edit/Write 自动接受 + Bash 整体 allow
+    expect(parsed.permissions?.defaultMode).toBe('acceptEdits');
+    expect(parsed.permissions?.allow).toContain('Bash');
+    // 删除/不可逆操作走 ask（人工确认），不进 allow
+    expect(parsed.permissions?.ask).toContain('Bash(rm *)');
+    expect(parsed.permissions?.ask).toContain('Bash(git clean *)');
+    expect(parsed.permissions?.ask).toContain('Bash(git push --force*)');
+    expect(parsed.permissions?.ask).toContain('Bash(dd *)');
+    // ask 列表不应误放进 allow
+    expect(parsed.permissions?.allow).not.toContain('Bash(rm *)');
+  });
+
   it('should NOT render legacy harness-planner / harness-evaluator files (v3-core only)', () => {
     const files = renderClaudeCodeManagedFiles(
       createHostManifest('claude-code', 'harnessly-local'),
@@ -173,5 +192,41 @@ describe('Claude Code hook bridge scripts', () => {
     expect(sessionHook).toContain('catch (error)');
     expect(promptHook).toContain('catch (error)');
     expect(stopHook).toContain('catch (error)');
+  });
+
+  it('should embed blockCount-based escalation hint in buildCompletionDecision', () => {
+    // P0 v3: 反复阻断时追加"建议人工介入"提示，避免主 agent 死循环触发 Stop hook
+    const io = renderClaudeCodeHookIo(createHostManifest('claude-code', 'harnessly-local'));
+
+    expect(io).toContain('blockEscalation');
+    expect(io).toContain('blockCount >= 3');
+    expect(io).toContain('harnessly retry');
+    expect(io).toContain('${blockEscalation}');
+  });
+
+  it('v2.1 (SPEC §6.4.4): buildPromptSubmitContext returns empty for lite preset', () => {
+    // lite preset 由主 agent 直接承担三阶段，hook 完全不注入 spawn 指令，避免上下文污染
+    const io = renderClaudeCodeHookIo(createHostManifest('claude-code', 'harnessly-local'));
+
+    // 早 return 的判断条件
+    expect(io).toContain("const preset = result?.preset || 'lite'");
+    expect(io).toContain("if (preset === 'lite')");
+    // full preset 路径含明确 MUST 措辞 + [Harnessly full preset] 标识
+    expect(io).toContain('[Harnessly full preset]');
+    expect(io).toContain('必须使用 Task tool spawn');
+    expect(io).toContain('必须 spawn');
+  });
+
+  it('v2.1 阶段 2c 修订（C 方案）: managed files 不应含 .claude/commands/ 文件', () => {
+    // 阶段 2c dogfood 发现 Claude Code 2.x 不识别 .claude/commands/*.md
+    // （slash commands = Skills，路径在 ~/.claude/skills/）。按 SPEC §6.4.8
+    // SHOULD 改走 marker fallback。renderer 不应再生成 .claude/commands/
+    const files = renderClaudeCodeManagedFiles(
+      createHostManifest('claude-code', 'harnessly-local'),
+      TEST_WORK_DIR,
+    );
+
+    const commandsKeys = Object.keys(files).filter((p) => p.startsWith('.claude/commands/'));
+    expect(commandsKeys).toEqual([]);
   });
 });

@@ -13,6 +13,34 @@ type AdapterKind = 'claude-code' | 'codex' | 'custom';
 type FlatYamlValue = string | number | boolean | string[];
 type TaskStatus = 'active' | 'blocked' | 'completed' | 'aborted';
 /**
+ * Workflow Preset (v3-core SPEC §6.4)
+ * - `lite` (默认): spec → execute → test 三阶段，由主 agent 直接承担逻辑角色
+ * - `full`: 完整六阶段，要求实例化 5 个 sub-agent
+ *
+ * 用户通过 `/harness-feat` slash command 或 `[harness:feat]` marker 显式触发 full；
+ * 否则默认 lite。
+ */
+type WorkflowPreset = 'lite' | 'full';
+/**
+ * Preset 设置来源 (v3-core SPEC §6.4.7)
+ * - `slash_command`: 通过 `/harness-feat` slash command 触发
+ * - `prompt_marker`: 宿主不支持 slash 时通过 `[harness:feat]` marker 触发
+ * - `upgrade`: 由 `harness upgrade` / `/harness-upgrade` 命令从 lite 升档而来
+ */
+type PresetSource = 'slash_command' | 'prompt_marker' | 'upgrade';
+/**
+ * Preset → 阶段子集映射 (v3-core SPEC §6.4.2)
+ *
+ * 阶段子集必须是 WorkflowStage 的**保序子集**：lite 跳过 design/review/commit_gate；
+ * full 跑全部六阶段。
+ *
+ * 当前为硬编码常量；后续阶段（P1.x）可扩展为从 `.harness/workflow.yaml` 读取，
+ * 实现 SPEC §6.4 中"实现可定义额外 preset"的扩展点。
+ */
+declare const PRESET_STAGE_MAP: Record<WorkflowPreset, readonly WorkflowStage[]>;
+/** 默认 preset，必须是 lite (SPEC §6.4.1) */
+declare const DEFAULT_PRESET: WorkflowPreset;
+/**
  * v3-core 主干工作流的 6 个固定阶段。
  * 与 SPEC §6.1 保持一致，禁止扩展为可编排 DAG。
  */
@@ -189,6 +217,21 @@ interface TaskState {
     retryCount: number;
     lastFailureReason?: string;
     lastFailureStage?: StageMarker;
+    /**
+     * v2.1 新增：任务绑定的 Workflow Preset (SPEC §6.4.7)。
+     * 加载 v2.0 state.json（缺该字段）时由 TaskManager.load 自动迁移为 'lite'。
+     */
+    preset: WorkflowPreset;
+    /**
+     * v2.1 新增：preset 设置来源 (SPEC §6.4.7)。
+     * v2.0 迁移时默认填 'slash_command'。
+     */
+    presetSource: PresetSource;
+    /**
+     * v2.1 新增：preset 设置时间 ISO timestamp (SPEC §6.4.7)。
+     * v2.0 迁移时取 createdAt。
+     */
+    presetSetAt: string;
 }
 interface TaskContext {
     taskId: string;
@@ -441,6 +484,8 @@ declare const riskLevelSchema: z.ZodEnum<["low", "medium", "high"]>;
 declare const estimatedComplexitySchema: z.ZodEnum<["simple", "medium", "complex"]>;
 declare const adapterKindSchema: z.ZodEnum<["claude-code", "codex", "custom"]>;
 declare const taskStatusSchema: z.ZodEnum<["active", "blocked", "completed", "aborted"]>;
+declare const workflowPresetSchema: z.ZodEnum<["lite", "full"]>;
+declare const presetSourceSchema: z.ZodEnum<["slash_command", "prompt_marker", "upgrade"]>;
 declare const workflowStageSchema: z.ZodEnum<["spec", "design", "execute", "review", "test", "commit_gate"]>;
 declare const stageMarkerSchema: z.ZodUnion<[z.ZodEnum<["spec", "design", "execute", "review", "test", "commit_gate"]>, z.ZodLiteral<"created">, z.ZodLiteral<"failed">, z.ZodLiteral<"retry">]>;
 declare const checkStatusSchema: z.ZodEnum<["passed", "failed", "skipped"]>;
@@ -496,4 +541,4 @@ declare function validateTemplateDraft(template: TemplateDraft): TemplateDraft;
 declare function serializeTemplateDraft(template: TemplateDraft): string;
 declare function parseTemplateDraft(text: string): TemplateDraft;
 
-export { type AcceptanceCriterion, type AcceptanceVerifier, type AdapterInput, type AdapterKind, type AdapterOutput, type AgentManifest, type AgentRole, type ArchiveTopicDetail, type ArchiveTopicSummary, type AssetPromotion, type BaselineCheckDiff, type BaselineDiff, type CheckStatus, type CommitDecision, type CommitGateResult, type Contract, type ContractGateResult, type EstimatedComplexity, type EvidenceBaseline, type EvidenceCheckResult, type EvidenceResult, type EvidenceSnapshot, type FeedbackEntry, type Finding, type FindingCategory, type FindingExample, type FindingGroup, type FlatYamlValue, HARNESSLY_VERSION, type HarnessConfig, type HarnessMetaFile, type HostLifecycleCommands, type HostManifest, type HostName, type PackageInfo, type ProjectType, type PromotableAs, type PromoteAction, type RequiredCheck, type ResidentReviewFinding, type ResidentReviewResult, type ReviewAgentConfig, type ReviewAgentsConfig, type RiskLevel, SHARED_PACKAGE_NAME, type Skill, type SourceTaskEntry, type StageMarker, type TaskContext, type TaskOwnerRole, type TaskReport, type TaskReportArtifacts, type TaskReportMetrics, type TaskState, type TaskStatus, type TaskSummary, type TemplateDraft, type TemplateName, type WorkflowStage, acceptanceCriterionSchema, acceptanceVerifierSchema, adapterKindSchema, adapterOutputSchema, agentManifestSchema, agentRoleSchema, assetPromotionSchema, baselineDiffSchema, checkStatusSchema, commitDecisionSchema, commitGateResultSchema, contractSchema, estimatedComplexitySchema, evidenceBaselineSchema, evidenceCheckResultSchema, evidenceResultSchema, evidenceSnapshotSchema, feedbackEntrySchema, harnessConfigSchema, harnessMetaFileSchema, hostNameSchema, packageInfo, parseAgentManifestYaml, parseBoolean, parseContract, parseFlatYaml, parseHarnessConfig, parseStringList, parseTaskReport, parseTemplateDraft, projectTypeSchema, requiredCheckSchema, riskLevelSchema, serializeAgentManifestYaml, serializeContract, serializeFlatYaml, serializeHarnessConfig, serializeTaskReport, serializeTemplateDraft, skillSchema, sourceTaskEntrySchema, stageMarkerSchema, taskOwnerRoleSchema, taskReportArtifactsSchema, taskReportMetricsSchema, taskReportSchema, taskStatusSchema, templateDraftSchema, templateNameSchema, validateContract, validateDesignMarkdown, validateHarnessConfig, validateRequirementMarkdown, validateTaskReport, validateTemplateDraft, workflowStageSchema };
+export { type AcceptanceCriterion, type AcceptanceVerifier, type AdapterInput, type AdapterKind, type AdapterOutput, type AgentManifest, type AgentRole, type ArchiveTopicDetail, type ArchiveTopicSummary, type AssetPromotion, type BaselineCheckDiff, type BaselineDiff, type CheckStatus, type CommitDecision, type CommitGateResult, type Contract, type ContractGateResult, DEFAULT_PRESET, type EstimatedComplexity, type EvidenceBaseline, type EvidenceCheckResult, type EvidenceResult, type EvidenceSnapshot, type FeedbackEntry, type Finding, type FindingCategory, type FindingExample, type FindingGroup, type FlatYamlValue, HARNESSLY_VERSION, type HarnessConfig, type HarnessMetaFile, type HostLifecycleCommands, type HostManifest, type HostName, PRESET_STAGE_MAP, type PackageInfo, type PresetSource, type ProjectType, type PromotableAs, type PromoteAction, type RequiredCheck, type ResidentReviewFinding, type ResidentReviewResult, type ReviewAgentConfig, type ReviewAgentsConfig, type RiskLevel, SHARED_PACKAGE_NAME, type Skill, type SourceTaskEntry, type StageMarker, type TaskContext, type TaskOwnerRole, type TaskReport, type TaskReportArtifacts, type TaskReportMetrics, type TaskState, type TaskStatus, type TaskSummary, type TemplateDraft, type TemplateName, type WorkflowPreset, type WorkflowStage, acceptanceCriterionSchema, acceptanceVerifierSchema, adapterKindSchema, adapterOutputSchema, agentManifestSchema, agentRoleSchema, assetPromotionSchema, baselineDiffSchema, checkStatusSchema, commitDecisionSchema, commitGateResultSchema, contractSchema, estimatedComplexitySchema, evidenceBaselineSchema, evidenceCheckResultSchema, evidenceResultSchema, evidenceSnapshotSchema, feedbackEntrySchema, harnessConfigSchema, harnessMetaFileSchema, hostNameSchema, packageInfo, parseAgentManifestYaml, parseBoolean, parseContract, parseFlatYaml, parseHarnessConfig, parseStringList, parseTaskReport, parseTemplateDraft, presetSourceSchema, projectTypeSchema, requiredCheckSchema, riskLevelSchema, serializeAgentManifestYaml, serializeContract, serializeFlatYaml, serializeHarnessConfig, serializeTaskReport, serializeTemplateDraft, skillSchema, sourceTaskEntrySchema, stageMarkerSchema, taskOwnerRoleSchema, taskReportArtifactsSchema, taskReportMetricsSchema, taskReportSchema, taskStatusSchema, templateDraftSchema, templateNameSchema, validateContract, validateDesignMarkdown, validateHarnessConfig, validateRequirementMarkdown, validateTaskReport, validateTemplateDraft, workflowPresetSchema, workflowStageSchema };

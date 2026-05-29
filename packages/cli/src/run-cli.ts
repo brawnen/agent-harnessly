@@ -18,6 +18,7 @@ import { runRetry } from './commands/retry';
 import { runTask } from './commands/run';
 import { runStatus } from './commands/status';
 import { runTemplatePromote } from './commands/template-promote';
+import { runUpgrade } from './commands/upgrade';
 import { parseArgs } from './utils/args';
 import { CLI_PACKAGE_NAME, CLI_VERSION } from './version';
 
@@ -34,6 +35,7 @@ function printUsage(): void {
       '  harnessly run --dry-run [--skip-confirm] "<goal>"',
       '  harnessly run --resume <task-id>',
       '  harnessly run [--skip-confirm] --adapter custom|codex --adapter-command "<cmd>" "<goal>"',
+      '  harnessly upgrade [--task-id <task-id>]',
       '  harnessly template promote [task-id] [--name <template-name>]',
       '  harnessly archive promote <task-id> --topic=<slug> --files=<list> [--mode=<mode>] [--json]',
       '  harnessly archive list [--json]',
@@ -97,6 +99,11 @@ export async function runCli(argv: string[]): Promise<void> {
 
   if (command === 'retry') {
     await runRetry(parsed.flags, [subcommand, ...rest].filter(Boolean));
+    return;
+  }
+
+  if (command === 'upgrade') {
+    await runUpgrade(parsed.flags);
     return;
   }
 
