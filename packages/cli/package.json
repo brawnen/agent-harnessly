@@ -1,6 +1,6 @@
 {
   "name": "@brawnen/harnessly",
-  "version": "0.1.0-alpha.11",
+  "version": "0.1.0-alpha.12",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -25,7 +25,8 @@
     "prepublishOnly": "pnpm build",
     "prepublish": "pnpm typecheck && pnpm test",
     "version:alpha": "npm version prerelease --preid alpha",
-    "publish:alpha": "npm publish --tag alpha"
+    "release": "npm publish",
+    "publish:alpha": "npm publish"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
