@@ -62,25 +62,28 @@ npm view @brawnen/harnessly versions
 
 ## dist-tag 策略（alpha 阶段）
 
-项目处于 alpha 阶段、尚无 stable 版本，因此**发布直接打 `latest`**（不再用 `--tag alpha`）：
+目标：让 `npm i @brawnen/harnessly`（默认装 latest）永远拿到最新版，避免 latest 停在旧版。
 
-- 版本号仍是 prerelease（`0.1.0-alpha.x`，表达开发阶段）
-- dist-tag 用 `latest`，让 `npm i @brawnen/harnessly`（默认装 latest）永远拿到最新版
+**npm 限制**：版本号是 prerelease（`0.1.0-alpha.x`）时，`npm publish` **禁止**默认打 latest，会报 `You must specify a tag using --tag when publishing a prerelease version`。因此 latest 跟最新只能分两步实现（`release` 脚本已自动串联）：
 
-这样避免了「`latest` 停在旧版、用户默认装到落后版本」的问题。等发布 `1.0` stable 时再引入 `next` / `alpha` 分流。
+1. `npm publish --tag alpha` —— 先发布到 `alpha` tag（满足 npm 对 prerelease 的要求）
+2. `npm dist-tag add @brawnen/harnessly@<version> latest` —— 再把 `latest` 指向该版本
 
-> npm dist-tag 无「绑定」概念：`latest` / `alpha` 都是指向具体版本的独立指针。alpha 阶段只维护 `latest` 一个即可。历史遗留的 `alpha` tag 可忽略，或用 `npm dist-tag rm @brawnen/harnessly alpha`（需 OTP）清理。
+结果：`alpha` 与 `latest` 两个 tag 都指向最新版。等发布 `1.0` stable（非 prerelease 版本号）后，`npm publish` 才能默认打 latest，届时可简化为一步。
+
+> npm dist-tag 无「绑定」概念：`latest` / `alpha` 都是指向具体版本的独立指针，只能让它们指向同一版本。
 
 ## 发布
 
 ```bash
-pnpm release              # = cd packages/cli && npm publish（默认打 latest）
-# 旧别名 pnpm publish:alpha 仍可用，行为同 release（已去掉 --tag alpha）
+pnpm release
+# = cd packages/cli && npm publish --tag alpha && npm dist-tag add @brawnen/harnessly@<version> latest
+# 旧别名 pnpm publish:alpha 等价
 ```
 
-CLI 的 `prepublishOnly` 会自动 `pnpm build`，确保发布的 `dist` 为最新。`publishConfig.access` 已设为 `public`，无需额外 `--access` 参数。
+`release` 脚本自动串联「发布到 alpha tag」+「把 latest 指过去」两步。CLI 的 `prepublishOnly` 会自动 `pnpm build`，确保发布的 `dist` 为最新。`publishConfig.access` 已设 `public`，无需 `--access`。
 
-**2FA 提示**：账号开启 2FA 时，`npm publish` 会要求一次性密码（OTP）。交互式发布会提示输入；脚本化发布用 `npm publish --otp=<6位码>`。需要完全免 OTP 的 CI 自动发布，改用 npm **automation token**（npmjs.com → Access Tokens → Generate → Automation）。
+**2FA 提示**：账号开启 2FA 时，两个写操作（`publish` + `dist-tag add`）**各需一次 OTP**，交互式会分别提示输入。想免 OTP 全自动发布（CI），用 npm **automation token**（npmjs.com → Access Tokens → Generate → Automation），它跳过 2FA。
 
 ## 安装验证
 
