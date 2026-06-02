@@ -4,7 +4,7 @@
 > Harnessly 不是新的 coding agent，也不是新的 runtime。它把“模型说完成了”变成“系统能验证完成”。
 
 [![Status](https://img.shields.io/badge/status-alpha-orange)]()
-[![npm package](https://img.shields.io/badge/npm-0.1.0--alpha.11-CB3837)](https://www.npmjs.com/package/@brawnen/harnessly)
+[![npm package](https://img.shields.io/npm/v/@brawnen/harnessly?label=npm&color=CB3837)](https://www.npmjs.com/package/@brawnen/harnessly)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-339933)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -106,12 +106,12 @@ SPEC -> DESIGN -> EXECUTE -> REVIEW -> TEST -> COMMIT GATE
 
 | 阶段 | 负责角色 | 主要产物 | 裁决 |
 | --- | --- | --- | --- |
-| SPEC | `requirement` | 包含范围和验收标准的 `contract.yaml` | PASS / FAIL |
-| DESIGN | `designer` | 包含步骤、依赖和风险的 `plan.json` | PASS / FAIL |
-| EXECUTE | 宿主主 agent | 代码改动 + git diff | - |
-| REVIEW | `reviewer` | 包含 findings 和裁决的 `review.json` | PASS / FAIL |
-| TEST | `tester` | `report.json` 中的 evidence 段 | PASS / FAIL |
-| COMMIT | gate | 综合 contract、review 和 evidence 得出最终判定 | allow / block |
+| SPEC | `requirement` | `requirement.md` + `contract.yaml`（范围、验收标准） | PASS / FAIL |
+| DESIGN | `designer` | `design.md` + `task-breakdown.md`（步骤、依赖、风险） | PASS / FAIL |
+| EXECUTE | 宿主主 agent | 代码改动 + `implementation-notes.md` | - |
+| REVIEW | `reviewer` | `review.md`（findings 和裁决） | PASS / FAIL |
+| TEST | `tester` | `test-report.md` + `evidence/baseline-diff.json` | PASS / FAIL |
+| COMMIT | gate | `report.json` —— 综合 contract、review、evidence 的最终判定 | allow / block |
 
 默认由宿主主 agent 执行实现。角色 agent 是职责划分和宿主原生能力的使用策略，不是额外构建一个固定多 agent runtime。
 
@@ -119,30 +119,36 @@ SPEC -> DESIGN -> EXECUTE -> REVIEW -> TEST -> COMMIT GATE
 
 ## 安装
 
-Harnessly 当前处于 alpha 阶段，API 和宿主接入细节仍可能变化。
+Harnessly 处于 alpha 阶段（API 和宿主接入仍可能变化），但直接全局安装即可拿到最新版 —— `latest` 与 `alpha` 指向同一版本：
 
 ```bash
-npm install -g @brawnen/harnessly@alpha
+npm install -g @brawnen/harnessly
 # 或
-pnpm add -g @brawnen/harnessly@alpha
+pnpm add -g @brawnen/harnessly
 ```
 
-如需锁定当前仓库版本：
+如需锁定指定版本：
 
 ```bash
-npm install -g @brawnen/harnessly@0.1.0-alpha.11
+npm install -g @brawnen/harnessly@0.1.0-alpha.13
+```
+
+验证：
+
+```bash
+harnessly --version
 ```
 
 要求：
 
 - Node.js >= 22
-- 正常任务和 diff 工作流需要 Git 仓库
+- Git 仓库（用于任务和 diff 工作流）
 
 ---
 
 ## 快速开始
 
-在已有项目里初始化 Harnessly：
+一条命令完成全部初始化 —— repo-local kernel、宿主薄壳、git hooks：
 
 ```bash
 cd your-existing-project
@@ -150,14 +156,15 @@ harnessly init --host codex
 # 或：harnessly init --host claude-code,codex
 ```
 
-安装宿主薄壳：
+验证宿主接入：
 
 ```bash
-harnessly host install
 harnessly host status
 ```
 
-之后继续使用原来的 Claude Code 或 Codex 工作流即可。Harnessly 会通过宿主 hook 或 command bridge 创建 contract、持久化任务状态、采集 evidence，并执行 completion gate。
+之后继续使用原来的 Claude Code 或 Codex 工作流即可。Harnessly 会通过宿主 hook 创建 contract、持久化任务状态、采集 evidence，并执行 completion gate。
+
+> `harnessly host install` / `harnessly host sync` 只在手动改动后重装/刷新宿主薄壳时才需要 —— `init` 已经装好了。
 
 纯 CLI 执行只是 fallback/debug/CI 路径：
 
@@ -217,7 +224,7 @@ harnessly upgrade --task-id <id>
 
 ## 当前状态
 
-当前仓库版本：`0.1.0-alpha.11`。
+最新发布版本见上方 npm badge（精确版本号用 `npm view @brawnen/harnessly version`）。
 
 已实现的 alpha 能力：
 

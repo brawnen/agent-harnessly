@@ -4,7 +4,7 @@
 > Harnessly is not a new coding agent or runtime. It turns "the model says it is done" into "the system can verify it is done."
 
 [![Status](https://img.shields.io/badge/status-alpha-orange)]()
-[![npm package](https://img.shields.io/badge/npm-0.1.0--alpha.11-CB3837)](https://www.npmjs.com/package/@brawnen/harnessly)
+[![npm package](https://img.shields.io/npm/v/@brawnen/harnessly?label=npm&color=CB3837)](https://www.npmjs.com/package/@brawnen/harnessly)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-339933)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -106,12 +106,12 @@ SPEC -> DESIGN -> EXECUTE -> REVIEW -> TEST -> COMMIT GATE
 
 | Stage | Owner | Main artifact | Decision |
 | --- | --- | --- | --- |
-| SPEC | `requirement` | `contract.yaml` with scope and acceptance criteria | PASS / FAIL |
-| DESIGN | `designer` | `plan.json` with steps, dependencies, and risks | PASS / FAIL |
-| EXECUTE | primary host agent | code changes + git diff | - |
-| REVIEW | `reviewer` | `review.json` with findings and decision | PASS / FAIL |
-| TEST | `tester` | evidence section in `report.json` | PASS / FAIL |
-| COMMIT | gate | final decision from contract, review, and evidence | allow / block |
+| SPEC | `requirement` | `requirement.md` + `contract.yaml` (scope, acceptance criteria) | PASS / FAIL |
+| DESIGN | `designer` | `design.md` + `task-breakdown.md` (steps, dependencies, risks) | PASS / FAIL |
+| EXECUTE | primary host agent | code changes + `implementation-notes.md` | - |
+| REVIEW | `reviewer` | `review.md` (findings and decision) | PASS / FAIL |
+| TEST | `tester` | `test-report.md` + `evidence/baseline-diff.json` | PASS / FAIL |
+| COMMIT | gate | `report.json` — final decision from contract, review, and evidence | allow / block |
 
 The primary host agent performs implementation by default. Role agents are responsibilities and host-native implementation strategies, not a separate multi-agent runtime.
 
@@ -119,30 +119,36 @@ The primary host agent performs implementation by default. Role agents are respo
 
 ## Install
 
-Harnessly is currently in alpha. APIs and host integration details may change.
+Harnessly is in alpha (APIs and host integration may change), but a plain global install always pulls the newest release — `latest` and `alpha` point to the same version:
 
 ```bash
-npm install -g @brawnen/harnessly@alpha
+npm install -g @brawnen/harnessly
 # or
-pnpm add -g @brawnen/harnessly@alpha
+pnpm add -g @brawnen/harnessly
 ```
 
-To pin the current repository version:
+Pin an exact version if needed:
 
 ```bash
-npm install -g @brawnen/harnessly@0.1.0-alpha.11
+npm install -g @brawnen/harnessly@0.1.0-alpha.13
+```
+
+Verify:
+
+```bash
+harnessly --version
 ```
 
 Requirements:
 
 - Node.js >= 22
-- Git repository for normal task and diff workflows
+- A Git repository (for task and diff workflows)
 
 ---
 
 ## Quick Start
 
-Initialize Harnessly inside an existing project:
+One command initializes everything — repo-local kernel, host shells, and git hooks:
 
 ```bash
 cd your-existing-project
@@ -150,14 +156,15 @@ harnessly init --host codex
 # or: harnessly init --host claude-code,codex
 ```
 
-Install host shells:
+Verify host integration:
 
 ```bash
-harnessly host install
 harnessly host status
 ```
 
-Then continue working in your existing Claude Code or Codex workflow. Harnessly uses host hooks or command bridges to create contracts, persist task state, collect evidence, and enforce completion gates.
+Then keep working in your existing Claude Code or Codex workflow. Harnessly intervenes through host hooks to create contracts, persist task state, collect evidence, and enforce completion gates.
+
+> `harnessly host install` / `harnessly host sync` are only needed to reinstall or refresh host shells after manual edits — `init` already installs them.
 
 CLI-only execution is a fallback/debug/CI path:
 
@@ -217,7 +224,7 @@ harnessly upgrade --task-id <id>
 
 ## Current Status
 
-Current package version in this repository: `0.1.0-alpha.11`.
+Latest published version is shown in the npm badge above (`npm view @brawnen/harnessly version` for the exact number).
 
 Implemented alpha capabilities:
 
