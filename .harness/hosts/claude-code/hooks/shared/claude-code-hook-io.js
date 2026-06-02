@@ -154,9 +154,9 @@ function buildCompletionDecision(result) {
   };
 }
 
-const SESSION_START_COMMAND = "\"/opt/homebrew/bin/harnessly\" host session-start";
-const USER_PROMPT_COMMAND = "\"/opt/homebrew/bin/harnessly\" host user-prompt-submit";
-const COMPLETION_GATE_COMMAND = "\"/opt/homebrew/bin/harnessly\" host completion-gate";
+const SESSION_START_COMMAND = "harnessly host session-start";
+const USER_PROMPT_COMMAND = "harnessly host user-prompt-submit";
+const COMPLETION_GATE_COMMAND = "harnessly host completion-gate";
 
 module.exports = {
   buildCompletionDecision,

@@ -2,6 +2,6 @@ host: claude-code
 version: 0.1.0-alpha.0
 enabled: true
 repo_local_paths: .claude/settings.json,.harness/hosts/claude-code/hooks/session_start.js,.harness/hosts/claude-code/hooks/user_prompt_submit.js,.harness/hosts/claude-code/hooks/stop.js,.harness/hosts/claude-code/hooks/shared/claude-code-hook-io.js
-session_start_command: "/opt/homebrew/bin/harnessly" host session-start
-user_prompt_submit_command: "/opt/homebrew/bin/harnessly" host user-prompt-submit
-completion_gate_command: "/opt/homebrew/bin/harnessly" host completion-gate
+session_start_command: harnessly host session-start
+user_prompt_submit_command: harnessly host user-prompt-submit
+completion_gate_command: harnessly host completion-gate

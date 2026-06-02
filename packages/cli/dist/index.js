@@ -4169,53 +4169,45 @@ import { writeFile as writeFile10 } from "fs/promises";
 // src/utils/git-hooks.ts
 import { chmod, mkdir as mkdir10, readFile as readFile12 } from "fs/promises";
 import path16 from "path";
-async function installGitHooks(workDir, hosts) {
+function renderResidentReviewHook(trigger, actionLabel) {
+  return [
+    "#!/bin/bash",
+    `# Managed by Harnessly \u2014 v3-core \xA714 \u5E38\u9A7B review agent ${trigger} \u89E6\u53D1`,
+    "",
+    "# \u89E3\u6790 harnessly \u547D\u4EE4\uFF1A\u4F18\u5148 PATH\uFF08\u5168\u5C40\u5B89\u88C5\uFF09\uFF0C\u5176\u6B21\u672C\u5730 node_modules/.bin",
+    "if command -v harnessly >/dev/null 2>&1; then",
+    "  HARNESS=harnessly",
+    'elif [ -x "node_modules/.bin/harnessly" ]; then',
+    '  HARNESS="node_modules/.bin/harnessly"',
+    "else",
+    `  echo "[harnessly] \u672A\u627E\u5230 harnessly \u547D\u4EE4\uFF0C\u8DF3\u8FC7 resident review\uFF08\u4E0D\u963B\u65AD ${actionLabel}\uFF09"`,
+    "  exit 0",
+    "fi",
+    "",
+    `echo "[harnessly] ${trigger}: running resident review..."`,
+    `"$HARNESS" host resident-review --trigger ${trigger}`,
+    "REVIEW_EXIT=$?",
+    "",
+    "if [ $REVIEW_EXIT -ne 0 ]; then",
+    `  echo "[harnessly] resident review \u53D1\u73B0\u963B\u65AD\u7EA7 finding\uFF0C${actionLabel} \u5DF2\u62E6\u622A"`,
+    "  exit 1",
+    "fi",
+    "",
+    'echo "[harnessly] resident review \u901A\u8FC7"',
+    "exit 0",
+    ""
+  ].join("\n");
+}
+async function installGitHooks(workDir, _hosts) {
   const installed = [];
   const hooksDir = path16.join(workDir, ".git", "hooks");
   await mkdir10(hooksDir, { recursive: true });
-  const harnessBin = 'node "$(git rev-parse --show-toplevel)/packages/cli/dist/index.js"';
   const prePushPath = path16.join(hooksDir, "pre-push");
-  const prePushScript = [
-    "#!/bin/bash",
-    "# Managed by Harnessly \u2014 v3-core \xA714 \u5E38\u9A7B review agent pre_push \u89E6\u53D1",
-    "set -e",
-    "",
-    `echo "[harnessly] pre-push: running resident review..."`,
-    `${harnessBin} host resident-review --trigger pre_push`,
-    "REVIEW_EXIT=$?",
-    "",
-    "if [ $REVIEW_EXIT -ne 0 ]; then",
-    '  echo "[harnessly] resident review \u53D1\u73B0\u963B\u65AD\u7EA7 finding\uFF0Cpush \u5DF2\u62E6\u622A"',
-    "  exit 1",
-    "fi",
-    "",
-    'echo "[harnessly] resident review \u901A\u8FC7"',
-    "exit 0",
-    ""
-  ].join("\n");
-  await copyFileOrWrite(prePushPath, prePushScript);
+  await copyFileOrWrite(prePushPath, renderResidentReviewHook("pre_push", "push"));
   await chmod(prePushPath, 493);
   installed.push(".git/hooks/pre-push");
   const preMergePath = path16.join(hooksDir, "pre-merge-commit");
-  const preMergeScript = [
-    "#!/bin/bash",
-    "# Managed by Harnessly \u2014 v3-core \xA714 \u5E38\u9A7B review agent pre_merge \u89E6\u53D1",
-    "set -e",
-    "",
-    `echo "[harnessly] pre-merge: running resident review..."`,
-    `${harnessBin} host resident-review --trigger pre_merge`,
-    "REVIEW_EXIT=$?",
-    "",
-    "if [ $REVIEW_EXIT -ne 0 ]; then",
-    '  echo "[harnessly] resident review \u53D1\u73B0\u963B\u65AD\u7EA7 finding\uFF0Cmerge \u5DF2\u62E6\u622A"',
-    "  exit 1",
-    "fi",
-    "",
-    'echo "[harnessly] resident review \u901A\u8FC7"',
-    "exit 0",
-    ""
-  ].join("\n");
-  await copyFileOrWrite(preMergePath, preMergeScript);
+  await copyFileOrWrite(preMergePath, renderResidentReviewHook("pre_merge", "merge"));
   await chmod(preMergePath, 493);
   installed.push(".git/hooks/pre-merge-commit");
   return installed;
@@ -5104,30 +5096,11 @@ async function readFileIfExists2(filePath) {
     return null;
   }
 }
-function quoteShellArg(value) {
-  return `"${value.replace(/(["\\$`])/g, "\\$1")}"`;
-}
 function getCurrentHarnesslyCommand() {
-  if (process.env.HARNESSLY_BIN?.trim()) {
-    return process.env.HARNESSLY_BIN.trim();
-  }
-  const entry = process.argv[1];
-  if (!entry) {
-    return "harnessly";
-  }
-  if (entry.endsWith(".js")) {
-    return `${quoteShellArg(process.execPath)} ${quoteShellArg(entry)}`;
-  }
-  return quoteShellArg(entry);
-}
-function isBareHarnesslyCommand(command) {
-  return command.trim().startsWith("harnessly ");
+  const override = process.env.HARNESSLY_BIN?.trim();
+  return override && override.length > 0 ? override : "harnessly";
 }
 function refreshManifestCommand(manifest, commandPrefix) {
-  const shouldRefresh = isBareHarnesslyCommand(manifest.sessionStartCommand) || isBareHarnesslyCommand(manifest.userPromptSubmitCommand) || isBareHarnesslyCommand(manifest.completionGateCommand);
-  if (!shouldRefresh) {
-    return manifest;
-  }
   return {
     ...manifest,
     sessionStartCommand: `${commandPrefix} host session-start`,

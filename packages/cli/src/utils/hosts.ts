@@ -25,41 +25,31 @@ async function readFileIfExists(filePath: string): Promise<string | null> {
   }
 }
 
-function quoteShellArg(value: string): string {
-  return `"${value.replace(/(["\\$`])/g, '\\$1')}"`;
+/**
+ * 解析写进 host manifest 的 harnessly 命令前缀。
+ *
+ * 关键设计（修复机器特定绝对路径写进仓库的 bug）：
+ * - `.harness/hosts/*.yaml` 是 commit 进仓库的 source-of-truth，因此命令前缀
+ *   必须可移植，不能是 `/opt/homebrew/bin/harnessly` 这种当前机器的绝对路径
+ *   （旧实现用 process.argv[1] 取当前入口绝对路径 → 换机器 / 团队协作即失效）
+ * - 默认统一用 bare `harnessly`（依赖 PATH，跨机器/跨安装方式可移植）
+ * - 特殊环境（如 GUI 启动 PATH 不全、或开发期指向特定 dist）通过 `HARNESSLY_BIN`
+ *   环境变量显式覆盖，例如 `HARNESSLY_BIN='node /path/to/dist/index.js'`
+ * - host hook 脚本在命令找不到时本就优雅降级（continue:true，不阻断），
+ *   因此 bare 命令在边缘环境也不会卡住用户
+ */
+export function getCurrentHarnesslyCommand(): string {
+  const override = process.env.HARNESSLY_BIN?.trim();
+  return override && override.length > 0 ? override : 'harnessly';
 }
 
-function getCurrentHarnesslyCommand(): string {
-  if (process.env.HARNESSLY_BIN?.trim()) {
-    return process.env.HARNESSLY_BIN.trim();
-  }
-
-  const entry = process.argv[1];
-  if (!entry) {
-    return 'harnessly';
-  }
-
-  if (entry.endsWith('.js')) {
-    return `${quoteShellArg(process.execPath)} ${quoteShellArg(entry)}`;
-  }
-
-  return quoteShellArg(entry);
-}
-
-function isBareHarnesslyCommand(command: string): boolean {
-  return command.trim().startsWith('harnessly ');
-}
-
+/**
+ * 用当前环境的命令前缀刷新 manifest 的三个生命周期命令。
+ *
+ * 总是覆盖（而非旧实现的「仅刷新 bare 命令」）：command 是纯生成物，应始终反映
+ * 当前环境的正确命令。这样旧的机器特定绝对路径脏数据会在下次 init/install 时自愈纠正。
+ */
 function refreshManifestCommand(manifest: HostManifest, commandPrefix: string): HostManifest {
-  const shouldRefresh =
-    isBareHarnesslyCommand(manifest.sessionStartCommand) ||
-    isBareHarnesslyCommand(manifest.userPromptSubmitCommand) ||
-    isBareHarnesslyCommand(manifest.completionGateCommand);
-
-  if (!shouldRefresh) {
-    return manifest;
-  }
-
   return {
     ...manifest,
     sessionStartCommand: `${commandPrefix} host session-start`,
