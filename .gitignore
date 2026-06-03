@@ -2,6 +2,8 @@
 /node_modules/
 **/node_modules/
 .idea/
+.DS_Store
+**/.DS_Store
 /.harness/active-task.txt
 /.harness/events.jsonl
 /.harness/pending-planner-delegation.json
