@@ -11,3 +11,8 @@
 /.harness/intake-feedback.jsonl
 /.claude/worktrees/
 
+/.claude/
+/.codex/
+/.harness/
+/.idea/
+/.obsidian/
