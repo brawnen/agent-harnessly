@@ -15,6 +15,6 @@
 
 /.claude/
 /.codex/
-/.harness/
+.harness/hosts/*/hooks/
 /.idea/
-/.obsidian/
+
