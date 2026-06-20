@@ -1,6 +1,6 @@
 {
   "name": "@brawnen/harnessly",
-  "version": "0.1.0-alpha.13",
+  "version": "0.1.0-alpha.14",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -25,7 +25,8 @@
     "prepublishOnly": "pnpm build",
     "prepublish": "pnpm typecheck && pnpm test",
     "version:alpha": "npm version prerelease --preid alpha",
-    "release": "npm publish --tag alpha && npm dist-tag add @brawnen/harnessly@$npm_package_version latest",
+    "tag:latest": "npm dist-tag add $npm_package_name@$npm_package_version latest",
+    "release": "npm publish --tag alpha && npm run tag:latest",
     "publish:alpha": "npm run release"
   },
   "dependencies": {

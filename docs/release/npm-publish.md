@@ -77,11 +77,19 @@ npm view @brawnen/harnessly versions
 
 ```bash
 pnpm release
-# = cd packages/cli && npm publish --tag alpha && npm dist-tag add @brawnen/harnessly@<version> latest
+# = cd packages/cli && npm publish --tag alpha && npm run tag:latest
 # 旧别名 pnpm publish:alpha 等价
 ```
 
 `release` 脚本自动串联「发布到 alpha tag」+「把 latest 指过去」两步。CLI 的 `prepublishOnly` 会自动 `pnpm build`，确保发布的 `dist` 为最新。`publishConfig.access` 已设 `public`，无需 `--access`。
+
+如果发布已经成功、但 `latest` 没有移动，可单独执行补救脚本：
+
+```bash
+pnpm tag:latest
+```
+
+该脚本会进入 `packages/cli`，用当前 `packages/cli/package.json` 的 `name` 和 `version` 执行 `npm dist-tag add <name>@<version> latest`。
 
 **2FA 提示**：账号开启 2FA 时，两个写操作（`publish` + `dist-tag add`）**各需一次 OTP**，交互式会分别提示输入。想免 OTP 全自动发布（CI），用 npm **automation token**（npmjs.com → Access Tokens → Generate → Automation），它跳过 2FA。
 

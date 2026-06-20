@@ -9,6 +9,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "prepublish": "pnpm build && pnpm typecheck && pnpm test",
     "version:alpha": "cd packages/cli && npm version prerelease --preid alpha",
+    "tag:latest": "cd packages/cli && npm run tag:latest",
     "release": "cd packages/cli && npm run release",
     "publish:alpha": "cd packages/cli && npm run release"
   },
