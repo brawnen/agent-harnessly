@@ -66,7 +66,6 @@ export function renderCodexHooks(
 
   return `${JSON.stringify(
     {
-      $comment: 'Repo-local Codex hooks generated from .harness/hosts/codex.',
       hooks,
     },
     null,

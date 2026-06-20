@@ -74,7 +74,6 @@ function renderCodexHooks(manifest, workDir, options = { userPromptSubmitHookEna
   }
   return `${JSON.stringify(
     {
-      $comment: "Repo-local Codex hooks generated from .harness/hosts/codex.",
       hooks
     },
     null,

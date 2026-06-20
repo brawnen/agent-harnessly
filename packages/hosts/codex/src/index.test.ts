@@ -43,6 +43,15 @@ describe('codex host renderer', () => {
     expect(hooks).toContain('stop.js');
   });
 
+  it('renders hooks.json with only the Codex-supported top-level hooks key', () => {
+    const parsed = JSON.parse(renderCodexHooks(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR));
+
+    expect(Object.keys(parsed)).toEqual(['hooks']);
+    expect(parsed.hooks).toHaveProperty('SessionStart');
+    expect(parsed.hooks).toHaveProperty('Stop');
+    expect(parsed.hooks).toHaveProperty('UserPromptSubmit');
+  });
+
   it('should omit UserPromptSubmit only when explicitly disabled', () => {
     const hooks = renderCodexHooks(createHostManifest('codex', 'harnessly-local'), TEST_WORK_DIR, {
       userPromptSubmitHookEnabled: false,
